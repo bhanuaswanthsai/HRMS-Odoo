@@ -57,6 +57,7 @@ router.post('/register', verifyToken, authorizeRoles('admin'), async (req, res) 
 // Login
 router.post('/login', async (req, res) => {
   try {
+    console.log('Login request received');
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -107,12 +108,17 @@ router.post('/login', async (req, res) => {
 
     // Remove password_hash from response
     delete user.password_hash;
-
+      console.log('Login response', {
+        success: true,
+        message: 'Login successfullllllll',
+        token,
+        user,
+      });
     res.json({
       success: true,
-      message: 'Login successful',
+      message: 'Login successfullllllll',
       token,
-      user
+      user,
     });
   } catch (error) {
     console.error('Login error:', error);
