@@ -30,16 +30,17 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401) {
+    // Don't redirect on 401 for public endpoints like register-company
+    const publicEndpoints = ['/auth/register-company', '/auth/login'];
+    const isPublicEndpoint = publicEndpoints.some(endpoint => error.config?.url?.includes(endpoint));
+    
+    if (error.response?.status === 401 && !isPublicEndpoint) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/';
       toast.error('Session expired. Please login again.');
-    } else if (error.response?.data?.message) {
-      toast.error(error.response.data.message);
-    } else {
-      toast.error('An error occurred. Please try again.');
     }
+    // Don't auto-show toast for errors - let components handle it
     return Promise.reject(error);
   }
 );

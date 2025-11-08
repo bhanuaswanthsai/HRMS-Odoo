@@ -1,63 +1,45 @@
 import { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
+import EmployeeCard from '../../components/EmployeeCard';
 
 const HRDashboard = () => {
-  const { user } = useAuth();
-  const [stats, setStats] = useState({
-    teamSize: 0,
-    pendingLeaves: 0,
-    attendanceRate: 0,
-  });
-  const [departmentData, setDepartmentData] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    total: 0,
+    present: 0,
+    onLeave: 0,
+    absent: 0,
+    notCheckedIn: 0,
+  });
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) {
-      fetchDashboardData();
-    }
-  }, [user]);
+    fetchEmployees();
+  }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchEmployees = async () => {
     try {
       setLoading(true);
+      const response = await api.get('/attendance/today/status');
+      const employeeData = response.data.employees || [];
       
-      // Fetch assigned employees
-      const employeesResponse = await api.get('/users/assigned/mine');
-      const myEmployees = employeesResponse.data.employees || [];
+      setEmployees(employeeData);
       
-      // Fetch pending leaves (already filtered by backend for HR)
-      const leavesResponse = await api.get('/leave/pending');
-      const pendingLeaves = leavesResponse.data.leaves || [];
-
-      // Fetch attendance summary
-      const attendanceResponse = await api.get('/attendance/summary/all');
-      const attendanceData = attendanceResponse.data.summary.filter(a => myEmployees.some(e => e.id === a.id));
-
-      // Calculate department breakdown
-      const deptCount = {};
-      myEmployees.forEach(emp => {
-        const dept = emp.department || 'Unassigned';
-        deptCount[dept] = (deptCount[dept] || 0) + 1;
-      });
-      setDepartmentData(Object.entries(deptCount).map(([name, value]) => ({ name, value })));
-
-      // Calculate attendance rate
-      const totalDays = attendanceData.reduce((sum, a) => sum + parseInt(a.total_days || 0), 0);
-      const presentDays = attendanceData.reduce((sum, a) => sum + parseInt(a.present_days || 0), 0);
-      const attendanceRate = totalDays > 0 ? (presentDays / totalDays) * 100 : 0;
-
-      setStats({
-        teamSize: myEmployees.length,
-        pendingLeaves: pendingLeaves.length,
-        attendanceRate: attendanceRate.toFixed(1),
-      });
-
+      // Calculate stats
+      const statsData = {
+        total: employeeData.length,
+        present: employeeData.filter(e => e.attendance_status === 'present').length,
+        onLeave: employeeData.filter(e => e.attendance_status === 'leave').length,
+        absent: employeeData.filter(e => e.attendance_status === 'absent').length,
+        notCheckedIn: employeeData.filter(e => e.attendance_status === 'not_checked_in').length,
+      };
+      setStats(statsData);
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      toast.error('Failed to load dashboard data');
+      console.error('Error fetching employees:', error);
+      toast.error('Failed to load employee data');
     } finally {
       setLoading(false);
     }
@@ -73,41 +55,57 @@ const HRDashboard = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">HR Dashboard</h1>
-      
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">HR Dashboard</h1>
+        <button
+          onClick={() => navigate('/create-employee')}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+        >
+          + Create Employee
+        </button>
+      </div>
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-gray-500 text-sm font-medium">Team Size</h3>
-          <p className="text-3xl font-bold text-gray-900 mt-2">{stats.teamSize}</p>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h3 className="text-gray-500 text-sm font-medium">Total Employees</h3>
+          <p className="text-2xl font-bold text-gray-900 mt-2">{stats.total}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-gray-500 text-sm font-medium">Pending Leaves</h3>
-          <p className="text-3xl font-bold text-yellow-600 mt-2">{stats.pendingLeaves}</p>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
+          <h3 className="text-gray-500 text-sm font-medium">Present</h3>
+          <p className="text-2xl font-bold text-green-600 mt-2">{stats.present}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-gray-500 text-sm font-medium">Attendance Rate</h3>
-          <p className="text-3xl font-bold text-green-600 mt-2">{stats.attendanceRate}%</p>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
+          <h3 className="text-gray-500 text-sm font-medium">On Leave</h3>
+          <p className="text-2xl font-bold text-blue-600 mt-2">{stats.onLeave}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-500">
+          <h3 className="text-gray-500 text-sm font-medium">Absent</h3>
+          <p className="text-2xl font-bold text-yellow-600 mt-2">{stats.absent}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
+          <h3 className="text-gray-500 text-sm font-medium">Not Checked In</h3>
+          <p className="text-2xl font-bold text-red-600 mt-2">{stats.notCheckedIn}</p>
         </div>
       </div>
 
-      {/* Department Breakdown Chart */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">Team by Department</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={departmentData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="value" fill="#10B981" />
-          </BarChart>
-        </ResponsiveContainer>
+      {/* Employee Cards Grid */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4">Employees</h2>
+        {employees.length === 0 ? (
+          <div className="bg-white p-8 rounded-lg shadow text-center">
+            <p className="text-gray-500">No employees found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {employees.map((employee) => (
+              <EmployeeCard key={employee.id} employee={employee} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 export default HRDashboard;
-

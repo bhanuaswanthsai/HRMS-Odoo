@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 
 const EmployeeDashboard = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     presentDays: 0,
     absentDays: 0,
@@ -14,17 +17,46 @@ const EmployeeDashboard = () => {
   const [attendanceData, setAttendanceData] = useState([]);
   const [latestPayslips, setLatestPayslips] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [checkedIn, setCheckedIn] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
+    fetchTodayStatus();
   }, []);
+
+  const fetchTodayStatus = async () => {
+    try {
+      const response = await api.get('/attendance/today/my-status');
+      setCheckedIn(response.data.checkedIn || false);
+    } catch (error) {
+      console.error('Error fetching today status:', error);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    try {
+      setCheckingIn(true);
+      const response = await api.post('/attendance/checkin');
+      if (response.data.success) {
+        setCheckedIn(true);
+        toast.success('Checked in successfully!');
+        fetchTodayStatus();
+      }
+    } catch (error) {
+      console.error('Check-in error:', error);
+      toast.error(error.response?.data?.message || 'Failed to check in');
+    } finally {
+      setCheckingIn(false);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const userId = user.id;
+      const userData = user || JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = userData.id;
 
       // Fetch attendance
       const attendanceResponse = await api.get(`/attendance/${userId}`);
@@ -82,7 +114,33 @@ const EmployeeDashboard = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Employee Dashboard</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Employee Dashboard</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate('/profile')}
+            className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 flex items-center gap-2"
+          >
+            <span>👤</span>
+            My Profile
+          </button>
+          {!checkedIn && (
+            <button
+              onClick={handleCheckIn}
+              disabled={checkingIn}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              {checkingIn ? 'Checking In...' : '✓ Check In'}
+            </button>
+          )}
+          {checkedIn && (
+            <div className="bg-green-100 text-green-800 px-4 py-2 rounded-lg flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+              Checked In
+            </div>
+          )}
+        </div>
+      </div>
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">

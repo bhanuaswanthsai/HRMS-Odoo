@@ -41,17 +41,32 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (email, password) => {
+  const login = async (identifier, password) => {
     try {
-      const response = await api.post('/auth/login', { email, password });
-      const { token, user } = response.data;
+      // Determine if identifier is email or login_id
+      const isEmail = identifier.includes('@');
+      const payload = isEmail 
+        ? { email: identifier, password }
+        : { login_id: identifier, password };
+      
+      const response = await api.post('/auth/login', payload);
+      const { token, user, requiresPasswordChange } = response.data;
+      
+      // If password change is required, return that info
+      if (requiresPasswordChange) {
+        return { 
+          success: true, 
+          requiresPasswordChange: true, 
+          user 
+        };
+      }
       
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
       setUser(user);
       
       toast.success('Login successful!');
-      return { success: true };
+      return { success: true, requiresPasswordChange: false };
     } catch (error) {
       return { success: false, error: error.response?.data?.message || 'Login failed' };
     }

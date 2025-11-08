@@ -29,6 +29,7 @@ const Navbar = () => {
   const navLinks = [
     { path: '/dashboard', label: 'Dashboard', icon: '📊' },
     ...(user?.role === 'admin' ? [{ path: '/users', label: 'Users', icon: '👥' }] : []),
+    ...(user?.role === 'admin' || user?.role === 'hr' ? [{ path: '/create-employee', label: 'Create Employee', icon: '➕' }] : []),
     { path: '/attendance', label: 'Attendance', icon: '⏰' },
     { path: '/leaves', label: 'Leaves', icon: '🏖️' },
     { path: '/payroll', label: 'Payroll', icon: '💰' },

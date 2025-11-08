@@ -3,7 +3,10 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
+import Landing from './pages/Landing';
 import Login from './pages/Login';
+import CompanySignup from './pages/CompanySignup';
+import CreateEmployee from './pages/CreateEmployee';
 import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
 import Leaves from './pages/Leaves';
@@ -18,7 +21,19 @@ const AppRoutes = () => {
   return (
     <Router>
       <Routes>
+        <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
         <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
+        <Route path="/company-signup" element={user ? <Navigate to="/dashboard" /> : <CompanySignup />} />
+        
+        <Route
+          path="/create-employee"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'hr']}>
+              <Navbar />
+              <CreateEmployee />
+            </ProtectedRoute>
+          }
+        />
         
         <Route
           path="/dashboard"
@@ -90,7 +105,6 @@ const AppRoutes = () => {
           }
         />
         
-        <Route path="/" element={<Navigate to="/dashboard" />} />
       </Routes>
     </Router>
   );

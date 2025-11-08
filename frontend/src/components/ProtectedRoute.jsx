@@ -49,7 +49,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
   if (!user) {
     return (
-      <Navigate to="/login" replace />
+      <Navigate to="/" replace />
     );
   }
 
