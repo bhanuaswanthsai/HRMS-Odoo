@@ -33,6 +33,14 @@ const CreateEmployee = () => {
       return;
     }
 
+    // Auto-populate company name from logged-in user
+    if (user.company_name) {
+      setFormData(prev => ({
+        ...prev,
+        company_name: user.company_name
+      }));
+    }
+
     // Fetch HR officers for dropdown
     if (user.role === 'admin') {
       fetchHROfficers();
@@ -241,10 +249,11 @@ const CreateEmployee = () => {
                     id="company_name"
                     name="company_name"
                     value={formData.company_name}
-                    onChange={handleInputChange}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter company name"
+                    readOnly
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-700 cursor-not-allowed"
+                    placeholder="Company name"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Company name is automatically set from your account</p>
                 </div>
 
                 <div>

@@ -98,16 +98,6 @@ const Navbar = () => {
 
           {/* User Menu */}
           <div className="flex items-center space-x-3" ref={dropdownRef}>
-            {/* Notification Bell */}
-            <button className="relative p-2 rounded-lg hover:bg-slate-800/50 transition-all duration-300 group">
-              <div className="relative">
-                <svg className="w-5 h-5 text-gray-400 group-hover:text-gray-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5zM10.24 8.56a5.97 5.97 0 01-4.66-7.5 1 1 0 00-1.14-1.14 7.97 7.97 0 006.24 9.94z" />
-                </svg>
-                <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-gray-900"></div>
-              </div>
-            </button>
-
             {/* User Profile Dropdown */}
             <div className="relative">
               <button
@@ -118,8 +108,6 @@ const Navbar = () => {
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform duration-300 font-semibold text-gray-300 border border-slate-500">
                     {user?.name?.charAt(0).toUpperCase()}
                   </div>
-                  {/* Online status indicator */}
-                  <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full border border-gray-900"></div>
                 </div>
                 
                 <div className="hidden md:block text-left">

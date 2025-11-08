@@ -47,31 +47,6 @@ const Landing = () => {
             >
               Sign In
             </Link>
-            
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 text-gray-500">
-                  New to WorkZen?
-                </span>
-              </div>
-            </div>
-
-            <Link
-              to="/company-signup"
-              className="block w-full bg-white text-blue-600 py-4 px-6 rounded-lg text-lg font-semibold border-2 border-blue-600 hover:bg-blue-50 transition-colors shadow-lg"
-            >
-              Sign Up as Company
-            </Link>
-
-            <p className="text-sm text-gray-500 mt-4">
-              Already have an account?{' '}
-              <Link to="/login" className="text-blue-600 hover:underline font-semibold">
-                Sign in here
-              </Link>
-            </p>
           </div>
         </div>
       </div>

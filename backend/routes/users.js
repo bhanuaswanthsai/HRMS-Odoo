@@ -11,8 +11,9 @@ router.get('/', verifyToken, authorizeRoles('admin'), async (req, res) => {
     const { search } = req.query;
     let query = `
       SELECT 
-        u.id, u.name, u.email, u.role, u.department, u.base_salary, 
-        u.status, u.created_at, u.hr_assigned_id,
+        u.id, u.name, u.email, u.login_id, u.role, u.department, u.base_salary, 
+        u.status, u.created_at, u.hr_assigned_id, u.first_name, u.last_name,
+        u.phone_number, u.year_of_joining, u.employee_number,
         hr.name as hr_name, hr.email as hr_email
       FROM users u
       LEFT JOIN users hr ON u.hr_assigned_id = hr.id
@@ -45,6 +46,343 @@ router.get('/', verifyToken, authorizeRoles('admin'), async (req, res) => {
   }
 });
 
+// Get user profile (with all fields) - User can view own profile
+// NOTE: This must come before /:id route to avoid route conflicts
+router.get('/:id/profile', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+
+    // Users can only view their own profile, unless they're admin/hr
+    if (req.user.role === 'employee' && userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only view your own profile.'
+      });
+    }
+
+    // HR can only view their assigned employees
+    if (req.user.role === 'hr' && userId !== req.user.id) {
+      const assignedCheck = await pool.query(
+        'SELECT id FROM users WHERE id = $1 AND hr_assigned_id = $2',
+        [userId, req.user.id]
+      );
+      if (assignedCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. You can only view your assigned employees.'
+        });
+      }
+    }
+
+    const result = await pool.query(
+      `SELECT 
+        u.*, 
+        m.name as manager_name, m.email as manager_email,
+        hr.name as hr_name, hr.email as hr_email
+      FROM users u
+      LEFT JOIN users m ON u.manager_id = m.id
+      LEFT JOIN users hr ON u.hr_assigned_id = hr.id
+      WHERE u.id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = result.rows[0];
+    // Parse array fields if they're stored as strings
+    if (typeof user.skills === 'string') {
+      try {
+        user.skills = JSON.parse(user.skills);
+      } catch (e) {
+        user.skills = user.skills ? [user.skills] : [];
+      }
+    }
+    if (typeof user.certifications === 'string') {
+      try {
+        user.certifications = JSON.parse(user.certifications);
+      } catch (e) {
+        user.certifications = user.certifications ? [user.certifications] : [];
+      }
+    }
+
+    res.json({
+      success: true,
+      user: user
+    });
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching profile',
+      error: error.message
+    });
+  }
+});
+
+// Update user profile
+router.put('/:id/profile', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+
+    // Users can only update their own profile
+    if (req.user.role === 'employee' && userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only update your own profile.'
+      });
+    }
+
+    // HR can only update their assigned employees
+    if (req.user.role === 'hr' && userId !== req.user.id) {
+      const assignedCheck = await pool.query(
+        'SELECT id FROM users WHERE id = $1 AND hr_assigned_id = $2',
+        [userId, req.user.id]
+      );
+      if (assignedCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. You can only update your assigned employees.'
+        });
+      }
+    }
+
+    const {
+      name, first_name, last_name, email, phone_number, department, location, job_position,
+      date_of_birth, residing_address, nationality, personal_email,
+      gender, marital_status, about, job_likes, interests_hobbies,
+      resume, skills, certifications, bank_account_number, bank_name,
+      ifsc_code, pan_number, uan_number, month_wage, yearly_wage,
+      working_days_per_week, break_time_hours
+    } = req.body;
+
+    // Build update query dynamically
+    const updateFields = [];
+    const params = [];
+    let paramCount = 1;
+
+    // Handle array fields
+    let skillsArray = null;
+    let certsArray = null;
+    
+    if (skills !== undefined) {
+      skillsArray = Array.isArray(skills) ? skills : (typeof skills === 'string' && skills ? JSON.parse(skills) : []);
+    }
+    if (certifications !== undefined) {
+      certsArray = Array.isArray(certifications) ? certifications : (typeof certifications === 'string' && certifications ? JSON.parse(certifications) : []);
+    }
+
+    if (name !== undefined) {
+      updateFields.push(`name = $${paramCount++}`);
+      params.push(name);
+    }
+    if (first_name !== undefined) {
+      updateFields.push(`first_name = $${paramCount++}`);
+      params.push(first_name);
+    }
+    if (last_name !== undefined) {
+      updateFields.push(`last_name = $${paramCount++}`);
+      params.push(last_name);
+    }
+    if (email !== undefined) {
+      updateFields.push(`email = $${paramCount++}`);
+      params.push(email);
+    }
+    if (phone_number !== undefined) {
+      updateFields.push(`phone_number = $${paramCount++}`);
+      params.push(phone_number);
+    }
+    if (department !== undefined) {
+      updateFields.push(`department = $${paramCount++}`);
+      params.push(department);
+    }
+    if (location !== undefined) {
+      updateFields.push(`location = $${paramCount++}`);
+      params.push(location);
+    }
+    if (job_position !== undefined) {
+      updateFields.push(`job_position = $${paramCount++}`);
+      params.push(job_position);
+    }
+    if (date_of_birth !== undefined) {
+      updateFields.push(`date_of_birth = $${paramCount++}`);
+      params.push(date_of_birth);
+    }
+    if (residing_address !== undefined) {
+      updateFields.push(`residing_address = $${paramCount++}`);
+      params.push(residing_address);
+    }
+    if (nationality !== undefined) {
+      updateFields.push(`nationality = $${paramCount++}`);
+      params.push(nationality);
+    }
+    if (personal_email !== undefined) {
+      updateFields.push(`personal_email = $${paramCount++}`);
+      params.push(personal_email);
+    }
+    if (gender !== undefined) {
+      updateFields.push(`gender = $${paramCount++}`);
+      params.push(gender);
+    }
+    if (marital_status !== undefined) {
+      updateFields.push(`marital_status = $${paramCount++}`);
+      params.push(marital_status);
+    }
+    if (about !== undefined) {
+      updateFields.push(`about = $${paramCount++}`);
+      params.push(about);
+    }
+    if (job_likes !== undefined) {
+      updateFields.push(`job_likes = $${paramCount++}`);
+      params.push(job_likes);
+    }
+    if (interests_hobbies !== undefined) {
+      updateFields.push(`interests_hobbies = $${paramCount++}`);
+      params.push(interests_hobbies);
+    }
+    if (resume !== undefined) {
+      updateFields.push(`resume = $${paramCount++}`);
+      params.push(resume);
+    }
+    if (skillsArray !== null && skillsArray !== undefined) {
+      updateFields.push(`skills = $${paramCount++}`);
+      params.push(JSON.stringify(skillsArray));
+    }
+    if (certsArray !== null && certsArray !== undefined) {
+      updateFields.push(`certifications = $${paramCount++}`);
+      params.push(JSON.stringify(certsArray));
+    }
+    if (bank_account_number !== undefined) {
+      updateFields.push(`bank_account_number = $${paramCount++}`);
+      params.push(bank_account_number);
+    }
+    if (bank_name !== undefined) {
+      updateFields.push(`bank_name = $${paramCount++}`);
+      params.push(bank_name);
+    }
+    if (ifsc_code !== undefined) {
+      updateFields.push(`ifsc_code = $${paramCount++}`);
+      params.push(ifsc_code);
+    }
+    if (pan_number !== undefined) {
+      updateFields.push(`pan_number = $${paramCount++}`);
+      params.push(pan_number);
+    }
+    if (uan_number !== undefined) {
+      updateFields.push(`uan_number = $${paramCount++}`);
+      params.push(uan_number);
+    }
+    // Only admin/payroll can update salary info
+    if ((req.user.role === 'admin' || req.user.role === 'payroll')) {
+      if (month_wage !== undefined) {
+        updateFields.push(`month_wage = $${paramCount++}`);
+        params.push(month_wage);
+      }
+      if (yearly_wage !== undefined) {
+        updateFields.push(`yearly_wage = $${paramCount++}`);
+        params.push(yearly_wage);
+      }
+      if (working_days_per_week !== undefined) {
+        updateFields.push(`working_days_per_week = $${paramCount++}`);
+        params.push(working_days_per_week);
+      }
+      if (break_time_hours !== undefined) {
+        updateFields.push(`break_time_hours = $${paramCount++}`);
+        params.push(break_time_hours);
+      }
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No fields to update'
+      });
+    }
+
+    params.push(userId);
+    const query = `UPDATE users SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`;
+    
+    const result = await pool.query(query, params);
+    
+    // Parse array fields
+    const updatedUser = result.rows[0];
+    if (typeof updatedUser.skills === 'string') {
+      try {
+        updatedUser.skills = JSON.parse(updatedUser.skills);
+      } catch (e) {
+        updatedUser.skills = updatedUser.skills ? [updatedUser.skills] : [];
+      }
+    }
+    if (typeof updatedUser.certifications === 'string') {
+      try {
+        updatedUser.certifications = JSON.parse(updatedUser.certifications);
+      } catch (e) {
+        updatedUser.certifications = updatedUser.certifications ? [updatedUser.certifications] : [];
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating profile',
+      error: error.message
+    });
+  }
+});
+
+// Update user avatar
+router.put('/:id/avatar', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+    const { avatar } = req.body;
+
+    // Users can only update their own avatar
+    if (req.user.role === 'employee' && userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only update your own avatar.'
+      });
+    }
+
+    if (!avatar) {
+      return res.status(400).json({
+        success: false,
+        message: 'Avatar is required'
+      });
+    }
+
+    await pool.query(
+      'UPDATE users SET avatar = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [avatar, userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Avatar updated successfully'
+    });
+  } catch (error) {
+    console.error('Update avatar error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating avatar',
+      error: error.message
+    });
+  }
+});
+
 // Get user by ID (HR/Admin)
 router.get('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) => {
   try {
@@ -66,10 +404,11 @@ router.get('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) 
 
     const userResult = await pool.query(
       `SELECT 
-        u.id, u.name, u.email, u.role, u.department, u.base_salary, 
-        u.status, u.created_at, u.hr_assigned_id,
+        u.*,
+        m.name as manager_name, m.email as manager_email,
         hr.name as hr_name, hr.email as hr_email
       FROM users u
+      LEFT JOIN users m ON u.manager_id = m.id
       LEFT JOIN users hr ON u.hr_assigned_id = hr.id
       WHERE u.id = $1`,
       [id]
@@ -96,15 +435,37 @@ router.get('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) 
   }
 });
 
-// Create user (Admin only)
-router.post('/', verifyToken, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { name, email, password, role, department, base_salary, hr_assigned_id } = req.body;
+// Helper function to generate login ID
+function generateLoginId(firstName, lastName, year, employeeNumber) {
+  const firstTwo = (firstName || '').substring(0, 2).toLowerCase().padEnd(2, 'x');
+  const lastTwo = (lastName || '').substring(0, 2).toLowerCase().padEnd(2, 'x');
+  const yearStr = year.toString();
+  const empNum = employeeNumber.toString().padStart(3, '0');
+  return `${firstTwo}${lastTwo}${yearStr}${empNum}`;
+}
 
-    if (!name || !email || !password || !role) {
+// Create user (Admin/HR only)
+router.post('/', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) => {
+  try {
+    const { 
+      first_name, 
+      last_name, 
+      email, 
+      phone_number, 
+      role, 
+      department, 
+      base_salary, 
+      hr_assigned_id,
+      year_of_joining,
+      company_name,
+      company_logo
+    } = req.body;
+
+    // Validate input
+    if (!first_name || !last_name || !email || !role) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide name, email, password, and role'
+        message: 'Please provide first name, last name, email, and role'
       });
     }
 
@@ -128,21 +489,67 @@ router.post('/', verifyToken, authorizeRoles('admin'), async (req, res) => {
       }
     }
 
+    // Get year of joining (default to current year)
+    const joiningYear = year_of_joining || new Date().getFullYear();
+
+    // Get next employee number for the year
+    const empNumResult = await pool.query(
+      'SELECT get_next_employee_number($1) as next_number',
+      [joiningYear]
+    );
+    const employeeNumber = empNumResult.rows[0].next_number;
+
+    // Generate login ID
+    const loginId = generateLoginId(first_name, last_name, joiningYear, employeeNumber);
+
+    // Check if login_id already exists (unlikely but possible)
+    let finalLoginId = loginId;
+    let counter = 1;
+    while (true) {
+      const existing = await pool.query('SELECT id FROM users WHERE login_id = $1', [finalLoginId]);
+      if (existing.rows.length === 0) break;
+      finalLoginId = `${loginId}${counter}`;
+      counter++;
+    }
+
+    // Generate system password (random 8-character alphanumeric)
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let systemPasswordFinal = '';
+    for (let i = 0; i < 8; i++) {
+      systemPasswordFinal += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
     // Hash password
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(systemPasswordFinal, 10);
+
+    // Combine first and last name for full name
+    const fullName = `${first_name} ${last_name}`;
 
     // Insert user
     const result = await pool.query(
-      `INSERT INTO users (name, email, password_hash, role, department, base_salary, hr_assigned_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
-       RETURNING id, name, email, role, department, base_salary, hr_assigned_id, status, created_at`,
-      [name, email, passwordHash, role, department || null, base_salary || 0, hr_assigned_id || null]
+      `INSERT INTO users (
+        name, first_name, last_name, email, phone_number, login_id, 
+        password_hash, role, department, base_salary, hr_assigned_id, 
+        status, year_of_joining, employee_number, password_changed,
+        company_name, company_logo
+      )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active', $12, $13, false, $14, $15)
+       RETURNING id, name, first_name, last_name, email, login_id, phone_number, 
+       role, department, base_salary, hr_assigned_id, status, created_at, 
+       year_of_joining, employee_number, company_name`,
+      [
+        fullName, first_name, last_name, email, phone_number || null, finalLoginId,
+        passwordHash, role, department || null, base_salary || 0, hr_assigned_id || null,
+        joiningYear, employeeNumber, company_name || null, company_logo || null
+      ]
     );
 
     res.status(201).json({
       success: true,
       message: 'User created successfully',
-      user: result.rows[0]
+      user: result.rows[0],
+      systemPassword: systemPasswordFinal, // Return system-generated password
+      loginId: finalLoginId
     });
   } catch (error) {
     console.error('Create user error:', error);

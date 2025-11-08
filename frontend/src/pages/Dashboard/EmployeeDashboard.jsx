@@ -19,6 +19,8 @@ const EmployeeDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [checkedIn, setCheckedIn] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [todayAttendance, setTodayAttendance] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -29,6 +31,7 @@ const EmployeeDashboard = () => {
     try {
       const response = await api.get('/attendance/today/my-status');
       setCheckedIn(response.data.checkedIn || false);
+      setTodayAttendance(response.data.attendance);
     } catch (error) {
       console.error('Error fetching today status:', error);
     }
@@ -48,6 +51,32 @@ const EmployeeDashboard = () => {
       toast.error(error.response?.data?.message || 'Failed to check in');
     } finally {
       setCheckingIn(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      setCheckingOut(true);
+      const currentTime = new Date().toTimeString().split(' ')[0];
+      
+      if (!todayAttendance || !todayAttendance.id) {
+        toast.error('Please check in first');
+        return;
+      }
+
+      const response = await api.put(`/attendance/${todayAttendance.id}`, {
+        check_out_time: currentTime
+      });
+      
+      if (response.data.success) {
+        toast.success('Checked out successfully!');
+        fetchTodayStatus();
+      }
+    } catch (error) {
+      console.error('Check-out error:', error);
+      toast.error(error.response?.data?.message || 'Failed to check out');
+    } finally {
+      setCheckingOut(false);
     }
   };
 
@@ -134,9 +163,25 @@ const EmployeeDashboard = () => {
             </button>
           )}
           {checkedIn && (
-            <div className="bg-green-100 text-green-800 px-4 py-2 rounded-lg flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-500"></div>
-              Checked In
+            <div className="flex items-center gap-2">
+              <div className="bg-green-100 text-green-800 px-4 py-2 rounded-lg flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                Checked In {todayAttendance?.check_in_time ? `at ${todayAttendance.check_in_time}` : ''}
+              </div>
+              {!todayAttendance?.check_out_time && (
+                <button
+                  onClick={handleCheckOut}
+                  disabled={checkingOut}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {checkingOut ? 'Checking Out...' : '✗ Check Out'}
+                </button>
+              )}
+              {todayAttendance?.check_out_time && (
+                <div className="bg-gray-100 text-gray-800 px-4 py-2 rounded-lg flex items-center gap-2">
+                  Checked Out at {todayAttendance.check_out_time}
+                </div>
+              )}
             </div>
           )}
         </div>

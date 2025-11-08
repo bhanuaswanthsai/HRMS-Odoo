@@ -11,6 +11,7 @@ const Profile = () => {
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [editingResume, setEditingResume] = useState(false);
   const [formData, setFormData] = useState({});
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -27,7 +28,11 @@ const Profile = () => {
       const response = await api.get(`/users/${authUser.id}/profile`);
       const data = response.data.user || response.data;
       setProfileData(data);
-      setFormData(data);
+      // Initialize formData with all profile data, ensuring name is set
+      setFormData({
+        ...data,
+        name: data.name || `${data.first_name || ''} ${data.last_name || ''}`.trim()
+      });
       setAvatarPreview(data.avatar);
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -96,12 +101,43 @@ const Profile = () => {
 
   const handleSave = async () => {
     try {
-      await api.put(`/users/${authUser.id}/profile`, formData);
+      // Ensure name is updated if first_name or last_name changed
+      const firstName = formData.first_name || profileData.first_name || '';
+      const lastName = formData.last_name || profileData.last_name || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      
+      // Prepare data to save - include all fields from formData
+      const dataToSave = {
+        ...formData,
+        name: fullName || formData.name || profileData.name,
+        first_name: firstName,
+        last_name: lastName
+      };
+      
+      await api.put(`/users/${authUser.id}/profile`, dataToSave);
       toast.success('Profile updated successfully');
       setEditing(false);
+      setEditingResume(false);
+      fetchUserProfile();
+      // Update auth context if name changed
+      if (fullName && fullName !== profileData.name) {
+        updateUser({ ...authUser, name: fullName });
+      }
+    } catch (error) {
+      console.error('Profile update error:', error);
+      toast.error(error.response?.data?.message || 'Failed to update profile');
+    }
+  };
+
+  const handleSaveResume = async () => {
+    try {
+      await api.put(`/users/${authUser.id}/profile`, { resume: formData.resume });
+      toast.success('Resume updated successfully');
+      setEditingResume(false);
       fetchUserProfile();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update profile');
+      console.error('Resume update error:', error);
+      toast.error(error.response?.data?.message || 'Failed to update resume');
     }
   };
 
@@ -163,13 +199,24 @@ const Profile = () => {
             <div>
               <label className="block text-sm font-medium text-gray-500">Name</label>
               {editing ? (
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name || ''}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    name="first_name"
+                    value={formData.first_name || ''}
+                    onChange={handleInputChange}
+                    placeholder="First Name"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                  <input
+                    type="text"
+                    name="last_name"
+                    value={formData.last_name || ''}
+                    onChange={handleInputChange}
+                    placeholder="Last Name"
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
               ) : (
                 <p className="mt-1 text-lg font-semibold">{profileData.name || `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim()}</p>
               )}
@@ -248,7 +295,14 @@ const Profile = () => {
           <div className="flex flex-col gap-2">
             {!editing ? (
               <button
-                onClick={() => setEditing(true)}
+                onClick={() => {
+                  setEditing(true);
+                  // Reset formData to current profile data when entering edit mode
+                  setFormData({
+                    ...profileData,
+                    name: profileData.name || `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim()
+                  });
+                }}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
               >
                 Edit Profile
@@ -259,12 +313,16 @@ const Profile = () => {
                   onClick={handleSave}
                   className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
                 >
-                  Save
+                  Save Profile
                 </button>
                 <button
                   onClick={() => {
                     setEditing(false);
-                    setFormData(profileData);
+                    // Reset formData to original profile data
+                    setFormData({
+                      ...profileData,
+                      name: profileData.name || `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim()
+                    });
                   }}
                   className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
                 >
@@ -300,18 +358,67 @@ const Profile = () => {
           {/* Resume Tab */}
           {activeTab === 'resume' && (
             <div>
-              <h3 className="text-lg font-semibold mb-4">Resume</h3>
-              {editing ? (
-                <textarea
-                  name="resume"
-                  value={formData.resume || ''}
-                  onChange={handleInputChange}
-                  rows={10}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="Paste your resume here..."
-                />
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Resume</h3>
+                {!editingResume && (
+                  <button
+                    onClick={() => {
+                      setEditingResume(true);
+                      setFormData({ ...formData, resume: profileData.resume || '' });
+                    }}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    {profileData.resume ? 'Edit Resume' : 'Add Resume'}
+                  </button>
+                )}
+              </div>
+              {editingResume ? (
+                <div className="space-y-4">
+                  <textarea
+                    name="resume"
+                    value={formData.resume || ''}
+                    onChange={handleInputChange}
+                    rows={15}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Paste your resume here or type your resume content..."
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveResume}
+                      className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                    >
+                      Save Resume
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingResume(false);
+                        setFormData(profileData);
+                      }}
+                      className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <p className="text-gray-700 whitespace-pre-wrap">{profileData.resume || 'No resume uploaded'}</p>
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                  {profileData.resume ? (
+                    <p className="text-gray-700 whitespace-pre-wrap">{profileData.resume}</p>
+                  ) : (
+                    <div className="text-center py-12">
+                      <p className="text-gray-500 mb-4">No resume added yet</p>
+                      <button
+                        onClick={() => {
+                          setEditingResume(true);
+                          setFormData({ ...formData, resume: '' });
+                        }}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                      >
+                        Add Resume
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -567,6 +674,27 @@ const Profile = () => {
                   )}
                 </div>
               </div>
+              
+              {/* Save Button for Private Info */}
+              {editing && (
+                <div className="mt-6 pt-6 border-t flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setEditing(false);
+                      setFormData(profileData);
+                    }}
+                    className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700"
+                  >
+                    Save Private Info
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

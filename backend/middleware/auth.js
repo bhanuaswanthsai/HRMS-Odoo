@@ -17,7 +17,9 @@ const verifyToken = async (req, res, next) => {
     
     // Get user from database
     const result = await pool.query(
-      'SELECT id, name, email, role, hr_assigned_id, department, base_salary, status FROM users WHERE id = $1',
+      `SELECT id, name, email, login_id, role, hr_assigned_id, department, 
+       base_salary, status, first_name, last_name, phone_number, 
+       year_of_joining, employee_number, company_name FROM users WHERE id = $1`,
       [decoded.userId]
     );
 

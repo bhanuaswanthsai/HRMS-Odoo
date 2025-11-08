@@ -4,6 +4,66 @@ const { verifyToken, authorizeRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Check-in (Employee) - Simple check-in for today
+router.post('/checkin', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const currentTime = new Date().toTimeString().split(' ')[0]; // HH:MM:SS
+
+    // Check if already checked in today
+    const existing = await pool.query(
+      'SELECT id, status FROM attendance WHERE user_id = $1 AND date = $2',
+      [userId, today]
+    );
+
+    if (existing.rows.length > 0) {
+      const existingRecord = existing.rows[0];
+      // If already present, return success
+      if (existingRecord.status === 'present') {
+        return res.json({
+          success: true,
+          message: 'Already checked in today',
+          attendance: existingRecord
+        });
+      }
+      // Update if status is different
+      const result = await pool.query(
+        `UPDATE attendance SET status = 'present', check_in_time = $1 
+         WHERE id = $2 
+         RETURNING id, user_id, date, status, check_in_time, check_out_time, created_at`,
+        [currentTime, existingRecord.id]
+      );
+      return res.json({
+        success: true,
+        message: 'Checked in successfully',
+        attendance: result.rows[0]
+      });
+    }
+
+    // Insert new attendance record
+    const result = await pool.query(
+      `INSERT INTO attendance (user_id, date, status, check_in_time)
+       VALUES ($1, $2, 'present', $3)
+       RETURNING id, user_id, date, status, check_in_time, check_out_time, created_at`,
+      [userId, today, currentTime]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Checked in successfully',
+      attendance: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Check-in error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking in',
+      error: error.message
+    });
+  }
+});
+
 // Mark attendance (Employee)
 router.post('/mark', verifyToken, authorizeRoles('employee'), async (req, res) => {
   try {
@@ -48,6 +108,82 @@ router.post('/mark', verifyToken, authorizeRoles('employee'), async (req, res) =
     res.status(500).json({
       success: false,
       message: 'Error marking attendance',
+      error: error.message
+    });
+  }
+});
+
+// Get today's attendance status for all employees (HR/Admin Dashboard)
+router.get('/today/status', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    let query = `
+      SELECT 
+        u.id, u.name, u.email, u.login_id, u.role, u.department, u.avatar,
+        u.first_name, u.last_name, u.company_name,
+        a.status, a.check_in_time, a.check_out_time,
+        CASE 
+          WHEN a.status = 'present' THEN 'present'
+          WHEN a.status = 'leave' THEN 'leave'
+          WHEN a.status = 'absent' THEN 'absent'
+          WHEN a.id IS NULL THEN 'not_checked_in'
+          ELSE 'unknown'
+        END as attendance_status
+      FROM users u
+      LEFT JOIN attendance a ON u.id = a.user_id AND a.date = $1
+      WHERE u.role = 'employee' AND u.status = 'active'
+    `;
+    const params = [today];
+    let paramCount = 2;
+
+    // HR can only see their assigned employees
+    if (req.user.role === 'hr') {
+      query += ` AND u.hr_assigned_id = $${paramCount++}`;
+      params.push(req.user.id);
+    }
+
+    query += ' ORDER BY u.name';
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      employees: result.rows
+    });
+  } catch (error) {
+    console.error('Get today attendance status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching today attendance status',
+      error: error.message
+    });
+  }
+});
+
+// Get today's attendance status for current user
+router.get('/today/my-status', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = new Date().toISOString().split('T')[0];
+
+    const result = await pool.query(
+      `SELECT id, user_id, date, status, check_in_time, check_out_time, created_at
+       FROM attendance 
+       WHERE user_id = $1 AND date = $2`,
+      [userId, today]
+    );
+
+    res.json({
+      success: true,
+      attendance: result.rows[0] || null,
+      checkedIn: result.rows.length > 0 && result.rows[0].status === 'present'
+    });
+  } catch (error) {
+    console.error('Get today status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching today status',
       error: error.message
     });
   }
@@ -189,8 +325,8 @@ router.get('/summary/all', verifyToken, authorizeRoles('admin', 'hr'), async (re
   }
 });
 
-// Update attendance (HR/Admin - override)
-router.put('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) => {
+// Update attendance (HR/Admin - override, or Employee - check out)
+router.put('/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { status, check_in_time, check_out_time, date } = req.body;
@@ -209,6 +345,14 @@ router.put('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) 
     }
 
     const userId = attendanceResult.rows[0].user_id;
+
+    // Employees can only update their own attendance (for check-out)
+    if (req.user.role === 'employee' && userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only update your own attendance.'
+      });
+    }
 
     // HR can only update their assigned employees
     if (req.user.role === 'hr') {

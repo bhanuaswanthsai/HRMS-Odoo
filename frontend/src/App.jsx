@@ -5,7 +5,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
-import CompanySignup from './pages/CompanySignup';
 import CreateEmployee from './pages/CreateEmployee';
 import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
@@ -23,7 +22,6 @@ const AppRoutes = () => {
       <Routes>
         <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
         <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
-        <Route path="/company-signup" element={user ? <Navigate to="/dashboard" /> : <CompanySignup />} />
         
         <Route
           path="/create-employee"

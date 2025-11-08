@@ -9,8 +9,9 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increase body size limit to handle large company logos (base64 images)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -28,6 +29,16 @@ app.get('/api/health', (req, res) => {
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  
+  // Handle "request entity too large" error specifically
+  if (err.type === 'entity.too.large' || err.message.includes('request entity too large')) {
+    return res.status(413).json({
+      success: false,
+      message: 'Request payload too large. Please reduce the size of your company logo (max 1MB) or try without a logo.',
+      error: 'Payload too large'
+    });
+  }
+  
   res.status(500).json({
     success: false,
     message: err.message || 'Internal Server Error',
