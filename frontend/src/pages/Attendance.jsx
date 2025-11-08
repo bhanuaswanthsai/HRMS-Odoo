@@ -16,6 +16,12 @@ const Attendance = () => {
     check_out_time: '',
   });
   const [editingAttendance, setEditingAttendance] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    date: '',
+    status: 'present',
+    check_in_time: '',
+    check_out_time: '',
+  });
 
   useEffect(() => {
     fetchAttendance();
@@ -91,14 +97,31 @@ const Attendance = () => {
     }
   };
 
-  const handleEditAttendance = async (id, data) => {
+  const handleEditClick = (record) => {
+    setEditingAttendance(record);
+    setEditFormData({
+      date: record.date ? new Date(record.date).toISOString().split('T')[0] : '',
+      status: record.status || 'present',
+      check_in_time: record.check_in_time || '',
+      check_out_time: record.check_out_time || '',
+    });
+  };
+
+  const handleEditAttendance = async (e) => {
+    e.preventDefault();
     try {
-      await api.put(`/attendance/${id}`, data);
+      await api.put(`/attendance/${editingAttendance.id}`, editFormData);
       toast.success('Attendance updated successfully');
       setEditingAttendance(null);
+      setEditFormData({
+        date: '',
+        status: 'present',
+        check_in_time: '',
+        check_out_time: '',
+      });
       fetchAttendance();
     } catch (error) {
-      toast.error('Failed to update attendance');
+      toast.error(error.response?.data?.message || 'Failed to update attendance');
     }
   };
 
@@ -179,7 +202,7 @@ const Attendance = () => {
                 {(user?.role === 'admin' || user?.role === 'hr') && (
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
-                      onClick={() => setEditingAttendance(record)}
+                      onClick={() => handleEditClick(record)}
                       className="text-blue-600 hover:text-blue-900"
                     >
                       Edit
@@ -251,6 +274,89 @@ const Attendance = () => {
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   Mark
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingAttendance && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <h3 className="text-lg font-bold mb-4">Edit Attendance</h3>
+            <form onSubmit={handleEditAttendance}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Employee</label>
+                <input
+                  type="text"
+                  disabled
+                  value={editingAttendance.employee_name || 'N/A'}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={editFormData.date}
+                  onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Status</label>
+                <select
+                  required
+                  value={editFormData.status}
+                  onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="present">Present</option>
+                  <option value="absent">Absent</option>
+                  <option value="leave">Leave</option>
+                </select>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Check-in Time</label>
+                <input
+                  type="time"
+                  value={editFormData.check_in_time}
+                  onChange={(e) => setEditFormData({ ...editFormData, check_in_time: e.target.value })}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Check-out Time</label>
+                <input
+                  type="time"
+                  value={editFormData.check_out_time}
+                  onChange={(e) => setEditFormData({ ...editFormData, check_out_time: e.target.value })}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingAttendance(null);
+                    setEditFormData({
+                      date: '',
+                      status: 'present',
+                      check_in_time: '',
+                      check_out_time: '',
+                    });
+                  }}
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Update
                 </button>
               </div>
             </form>

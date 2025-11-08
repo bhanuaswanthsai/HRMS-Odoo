@@ -33,7 +33,7 @@ const AppRoutes = () => {
         <Route
           path="/users"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute>
               <Navbar />
               <Users />
             </ProtectedRoute>

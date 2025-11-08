@@ -1,4 +1,5 @@
 const express = require('express');
+const PDFDocument = require('pdfkit');
 const { pool } = require('../config/database');
 const { verifyToken, authorizeRoles } = require('../middleware/auth');
 
@@ -124,63 +125,116 @@ router.post('/generate', verifyToken, authorizeRoles('admin', 'payroll'), async 
   }
 });
 
-// Get payroll for user (Employee: own, Payroll/Admin: any)
-router.get('/:user_id?', verifyToken, async (req, res) => {
+// Download payslip PDF (must come before /:user_id route)
+router.get('/payslip/:id/pdf', verifyToken, async (req, res) => {
   try {
-    const { user_id } = req.params;
-    const { month, year } = req.query;
-    let targetUserId = user_id ? parseInt(user_id) : req.user.id;
+    const { id } = req.params;
 
-    // Employees can only view their own payroll
-    if (req.user.role === 'employee' && targetUserId !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You can only view your own payroll.'
-      });
-    }
-
-    let query = `
-      SELECT 
+    // Get payslip data
+    const payslipResult = await pool.query(
+      `SELECT 
         p.id, p.user_id, p.month, p.year, p.basic_salary, p.paid_leaves,
         p.unpaid_leaves, p.pf_deduction, p.professional_tax, p.net_salary,
-        p.created_at, p.generated_by,
         u.name as employee_name, u.email as employee_email, u.department
       FROM payroll p
       JOIN users u ON p.user_id = u.id
-      WHERE p.user_id = $1
-    `;
-    const params = [targetUserId];
-    let paramCount = 2;
+      WHERE p.id = $1`,
+      [id]
+    );
 
-    if (month) {
-      query += ` AND p.month = $${paramCount++}`;
-      params.push(month);
+    if (payslipResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payslip not found'
+      });
     }
 
-    if (year) {
-      query += ` AND p.year = $${paramCount++}`;
-      params.push(year);
+    const payslip = payslipResult.rows[0];
+
+    // Employees can only download their own payslips
+    if (req.user.role === 'employee' && payslip.user_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only download your own payslips.'
+      });
     }
 
-    query += ' ORDER BY p.year DESC, p.month DESC';
+    // Create PDF
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader('Content-Type', 'application/pdf');
+    const monthName = new Date(2000, payslip.month - 1).toLocaleString('default', { month: 'long' });
+    res.setHeader('Content-Disposition', `attachment; filename=payslip_${monthName}_${payslip.year}.pdf`);
 
-    const result = await pool.query(query, params);
+    doc.pipe(res);
 
-    res.json({
-      success: true,
-      payroll: result.rows
-    });
+    // Header
+    doc.fontSize(24).text('WorkZen HRMS', { align: 'center' });
+    doc.fontSize(18).text('Salary Payslip', { align: 'center' });
+    doc.moveDown(2);
+
+    // Employee Info
+    doc.fontSize(14).text('Employee Information', { underline: true });
+    doc.fontSize(12);
+    doc.text(`Name: ${payslip.employee_name}`);
+    doc.text(`Email: ${payslip.employee_email}`);
+    doc.text(`Department: ${payslip.department || 'N/A'}`);
+    doc.moveDown();
+
+    // Pay Period
+    doc.fontSize(14).text('Pay Period', { underline: true });
+    doc.fontSize(12);
+    doc.text(`Month: ${monthName} ${payslip.year}`);
+    doc.moveDown();
+
+    // Salary Details
+    doc.fontSize(14).text('Salary Details', { underline: true });
+    doc.fontSize(12);
+    
+    const startX = 50;
+    const startY = doc.y;
+    let currentY = startY;
+
+    doc.text('Basic Salary:', startX, currentY);
+    doc.text(`₹${payslip.basic_salary}`, 300, currentY, { align: 'right' });
+    currentY += 20;
+
+    doc.text('Paid Leaves:', startX, currentY);
+    doc.text(`${payslip.paid_leaves} days`, 300, currentY, { align: 'right' });
+    currentY += 20;
+
+    doc.text('Unpaid Leaves:', startX, currentY);
+    doc.text(`${payslip.unpaid_leaves} days`, 300, currentY, { align: 'right' });
+    currentY += 20;
+
+    doc.text('PF Deduction (12%):', startX, currentY);
+    doc.text(`-₹${payslip.pf_deduction}`, 300, currentY, { align: 'right' });
+    currentY += 20;
+
+    doc.text('Professional Tax:', startX, currentY);
+    doc.text(`-₹${payslip.professional_tax}`, 300, currentY, { align: 'right' });
+    currentY += 30;
+
+    // Net Salary
+    doc.fontSize(16).text('Net Salary:', startX, currentY);
+    doc.fontSize(16).text(`₹${payslip.net_salary}`, 300, currentY, { align: 'right' });
+
+    // Footer
+    doc.moveDown(3);
+    doc.fontSize(10).text('This is a system generated payslip.', { align: 'center' });
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'center' });
+
+    doc.end();
   } catch (error) {
-    console.error('Get payroll error:', error);
+    console.error('Download payslip PDF error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching payroll',
+      message: 'Error generating payslip PDF',
       error: error.message
     });
   }
 });
 
-// Get all payroll reports (Payroll/Admin)
+// Get all payroll reports (Payroll/Admin) - must come before /:user_id route
 router.get('/reports/all', verifyToken, authorizeRoles('admin', 'payroll'), async (req, res) => {
   try {
     const { month, year, search } = req.query;
@@ -245,7 +299,7 @@ router.get('/reports/all', verifyToken, authorizeRoles('admin', 'payroll'), asyn
   }
 });
 
-// Get payroll summary for dashboard
+// Get payroll summary for dashboard - must come before /:user_id route
 router.get('/summary/dashboard', verifyToken, authorizeRoles('admin', 'payroll'), async (req, res) => {
   try {
     const currentDate = new Date();
@@ -315,5 +369,60 @@ router.get('/summary/dashboard', verifyToken, authorizeRoles('admin', 'payroll')
   }
 });
 
-module.exports = router;
+// Get payroll for user (Employee: own, Payroll/Admin: any) - must be last
+router.get('/:user_id?', verifyToken, async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const { month, year } = req.query;
+    let targetUserId = user_id ? parseInt(user_id) : req.user.id;
 
+    // Employees can only view their own payroll
+    if (req.user.role === 'employee' && targetUserId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only view your own payroll.'
+      });
+    }
+
+    let query = `
+      SELECT 
+        p.id, p.user_id, p.month, p.year, p.basic_salary, p.paid_leaves,
+        p.unpaid_leaves, p.pf_deduction, p.professional_tax, p.net_salary,
+        p.created_at, p.generated_by,
+        u.name as employee_name, u.email as employee_email, u.department
+      FROM payroll p
+      JOIN users u ON p.user_id = u.id
+      WHERE p.user_id = $1
+    `;
+    const params = [targetUserId];
+    let paramCount = 2;
+
+    if (month) {
+      query += ` AND p.month = $${paramCount++}`;
+      params.push(month);
+    }
+
+    if (year) {
+      query += ` AND p.year = $${paramCount++}`;
+      params.push(year);
+    }
+
+    query += ' ORDER BY p.year DESC, p.month DESC';
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      payroll: result.rows
+    });
+  } catch (error) {
+    console.error('Get payroll error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching payroll',
+      error: error.message
+    });
+  }
+});
+
+module.exports = router;

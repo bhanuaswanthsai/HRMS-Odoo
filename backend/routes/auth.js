@@ -133,12 +133,30 @@ router.post('/login', async (req, res) => {
 // Get current user profile
 router.get('/profile', verifyToken, async (req, res) => {
   try {
+    // Get user from database with profile image info
+    const userResult = await pool.query(
+      `SELECT 
+        id, name, email, role, hr_assigned_id, department, base_salary, status,
+        CASE WHEN profile_image IS NOT NULL THEN true ELSE false END as has_profile_image
+      FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = userResult.rows[0];
+
     // Get HR assigned info if exists
     let hrInfo = null;
-    if (req.user.hr_assigned_id) {
+    if (user.hr_assigned_id) {
       const hrResult = await pool.query(
         'SELECT id, name, email FROM users WHERE id = $1',
-        [req.user.hr_assigned_id]
+        [user.hr_assigned_id]
       );
       if (hrResult.rows.length > 0) {
         hrInfo = hrResult.rows[0];
@@ -148,7 +166,7 @@ router.get('/profile', verifyToken, async (req, res) => {
     res.json({
       success: true,
       user: {
-        ...req.user,
+        ...user,
         hr_assigned: hrInfo
       }
     });

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     department VARCHAR(255),
     base_salary NUMERIC(10, 2) DEFAULT 0,
     status user_status DEFAULT 'active',
+    profile_image BYTEA,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
