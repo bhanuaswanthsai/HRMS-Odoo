@@ -37,16 +37,27 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
+// Ensure required DB schema exists
+async function ensureSchema() {
+  // Add columns for profile images if they don't exist
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS profile_image BYTEA;
+  `);
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS profile_image_mime TEXT;
+  `);
+}
+
 // Initialize database and start server
 async function startServer() {
   try {
     // Test database connection
     await pool.query('SELECT NOW()');
-    console.log('✅ Database connected successfully');
+    await ensureSchema();
     
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-    });
+    app.listen(PORT, () => {});
   } catch (error) {
     console.error('❌ Database connection error:', error);
     process.exit(1);

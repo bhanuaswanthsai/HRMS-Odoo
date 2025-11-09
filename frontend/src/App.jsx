@@ -11,6 +11,7 @@ import Payroll from './pages/Payroll';
 import Reports from './pages/Reports';
 import Profile from './pages/Profile';
 import Users from './pages/Users';
+import Landing from './pages/Landing';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -33,7 +34,7 @@ const AppRoutes = () => {
         <Route
           path="/users"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute>
               <Navbar />
               <Users />
             </ProtectedRoute>
@@ -90,7 +91,7 @@ const AppRoutes = () => {
           }
         />
         
-        <Route path="/" element={<Navigate to="/dashboard" />} />
+        <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
       </Routes>
     </Router>
   );

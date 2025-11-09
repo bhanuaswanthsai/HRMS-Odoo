@@ -4,7 +4,164 @@ const { verifyToken, authorizeRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Mark attendance (Employee)
+// Helpers for time validation (expects 'HH:MM')
+function toMinutes(t) {
+  if (!t || typeof t !== 'string') return null;
+  const [hh, mm] = t.split(':').map((x) => parseInt(x, 10));
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  return hh * 60 + mm;
+}
+
+// Check-in (Employee) - Quick check-in button
+router.post('/checkin', verifyToken, authorizeRoles('employee'), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = new Date().toISOString().split('T')[0];
+    const currentTime = new Date().toTimeString().split(' ')[0].substring(0, 5); // HH:MM format
+
+    // Check if attendance already exists for today
+    const existing = await pool.query(
+      'SELECT id, check_in_time, check_out_time FROM attendance WHERE user_id = $1 AND date = $2',
+      [userId, today]
+    );
+
+    if (existing.rows.length > 0) {
+      // Already checked in
+      if (existing.rows[0].check_in_time) {
+        return res.status(400).json({
+          success: false,
+          message: 'Already checked in today'
+        });
+      }
+      // Update check-in time
+      const result = await pool.query(
+        `UPDATE attendance 
+         SET status = 'present', check_in_time = $1 
+         WHERE id = $2
+         RETURNING id, user_id, date, status, check_in_time, check_out_time, created_at`,
+        [currentTime, existing.rows[0].id]
+      );
+      return res.json({
+        success: true,
+        message: 'Checked in successfully',
+        attendance: result.rows[0]
+      });
+    }
+
+    // Create new attendance record with check-in
+    const result = await pool.query(
+      `INSERT INTO attendance (user_id, date, status, check_in_time)
+       VALUES ($1, $2, 'present', $3)
+       RETURNING id, user_id, date, status, check_in_time, check_out_time, created_at`,
+      [userId, today, currentTime]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Checked in successfully',
+      attendance: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Check-in error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking in',
+      error: error.message
+    });
+  }
+});
+
+// Check-out (Employee) - Quick check-out button
+router.post('/checkout', verifyToken, authorizeRoles('employee'), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = new Date().toISOString().split('T')[0];
+    const currentTime = new Date().toTimeString().split(' ')[0].substring(0, 5); // HH:MM format
+
+    // Check if attendance exists for today
+    const existing = await pool.query(
+      'SELECT id, check_in_time, check_out_time FROM attendance WHERE user_id = $1 AND date = $2',
+      [userId, today]
+    );
+
+    if (existing.rows.length === 0 || !existing.rows[0].check_in_time) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please check in first'
+      });
+    }
+
+    if (existing.rows[0].check_out_time) {
+      return res.status(400).json({
+        success: false,
+        message: 'Already checked out today'
+      });
+    }
+
+    // Update check-out time
+    const result = await pool.query(
+      `UPDATE attendance 
+       SET check_out_time = $1 
+       WHERE id = $2
+       RETURNING id, user_id, date, status, check_in_time, check_out_time, created_at`,
+      [currentTime, existing.rows[0].id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Checked out successfully',
+      attendance: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Check-out error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking out',
+      error: error.message
+    });
+  }
+});
+
+// Get today's attendance status (Employee)
+router.get('/today/status', verifyToken, authorizeRoles('employee'), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = new Date().toISOString().split('T')[0];
+
+    const result = await pool.query(
+      'SELECT id, status, check_in_time, check_out_time FROM attendance WHERE user_id = $1 AND date = $2',
+      [userId, today]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        checkedIn: false,
+        checkedOut: false,
+        status: null
+      });
+    }
+
+    const attendance = result.rows[0];
+    res.json({
+      success: true,
+      checkedIn: !!attendance.check_in_time,
+      checkedOut: !!attendance.check_out_time,
+      status: attendance.status,
+      check_in_time: attendance.check_in_time,
+      check_out_time: attendance.check_out_time
+    });
+  } catch (error) {
+    console.error('Get today status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching today status',
+      error: error.message
+    });
+  }
+});
+
+// Mark attendance (Employee) - Legacy endpoint for manual marking
 router.post('/mark', verifyToken, authorizeRoles('employee'), async (req, res) => {
   try {
     const { date, status, check_in_time, check_out_time } = req.body;
@@ -27,6 +184,22 @@ router.post('/mark', verifyToken, authorizeRoles('employee'), async (req, res) =
       return res.status(400).json({
         success: false,
         message: 'Attendance already marked for this date'
+      });
+    }
+
+    // Validate time order if provided
+    const inMin = toMinutes(check_in_time);
+    const outMin = toMinutes(check_out_time);
+    if (outMin !== null && inMin === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Check-out time cannot be set without a valid check-in time'
+      });
+    }
+    if (inMin !== null && outMin !== null && outMin <= inMin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Check-out time must be after check-in time'
       });
     }
 
@@ -197,7 +370,7 @@ router.put('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) 
 
     // Get attendance record
     const attendanceResult = await pool.query(
-      'SELECT user_id FROM attendance WHERE id = $1',
+      'SELECT user_id, check_in_time, check_out_time FROM attendance WHERE id = $1',
       [id]
     );
 
@@ -232,6 +405,24 @@ router.put('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) 
       updateFields.push(`status = $${paramCount++}`);
       params.push(status);
     }
+    // Determine effective times for validation
+    const newIn = check_in_time !== undefined ? check_in_time : attendanceResult.rows[0].check_in_time;
+    const newOut = check_out_time !== undefined ? check_out_time : attendanceResult.rows[0].check_out_time;
+    const newInMin = toMinutes(newIn);
+    const newOutMin = toMinutes(newOut);
+    if (newOutMin !== null && newInMin === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Check-out time cannot be set without a valid check-in time'
+      });
+    }
+    if (newInMin !== null && newOutMin !== null && newOutMin <= newInMin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Check-out time must be after check-in time'
+      });
+    }
+
     if (check_in_time !== undefined) {
       updateFields.push(`check_in_time = $${paramCount++}`);
       params.push(check_in_time);

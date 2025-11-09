@@ -14,7 +14,7 @@ const Navbar = () => {
 
   const navLinks = [
     { path: '/dashboard', label: 'Dashboard' },
-    ...(user?.role === 'admin' ? [{ path: '/users', label: 'Users' }] : []),
+    { path: '/users', label: 'Users' }, // All roles can access (read-only for employees)
     { path: '/attendance', label: 'Attendance' },
     { path: '/leaves', label: 'Leaves' },
     { path: '/payroll', label: 'Payroll' },

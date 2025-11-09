@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
 const EmployeeDashboard = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     presentDays: 0,
     absentDays: 0,
@@ -14,10 +15,47 @@ const EmployeeDashboard = () => {
   const [attendanceData, setAttendanceData] = useState([]);
   const [latestPayslips, setLatestPayslips] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [attendanceStatus, setAttendanceStatus] = useState({
+    checkedIn: false,
+    checkedOut: false,
+    status: null,
+  });
 
   useEffect(() => {
     fetchDashboardData();
+    fetchTodayStatus();
   }, []);
+
+  const fetchTodayStatus = async () => {
+    try {
+      const response = await api.get('/attendance/today/status');
+      setAttendanceStatus(response.data);
+    } catch (error) {
+      console.error('Error fetching today status:', error);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    try {
+      await api.post('/attendance/checkin');
+      toast.success('Checked in successfully!');
+      fetchTodayStatus();
+      fetchDashboardData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to check in');
+    }
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      await api.post('/attendance/checkout');
+      toast.success('Checked out successfully!');
+      fetchTodayStatus();
+      fetchDashboardData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to check out');
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -82,7 +120,32 @@ const EmployeeDashboard = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Employee Dashboard</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Employee Dashboard</h1>
+        {/* Check-in/Check-out Button */}
+        <button
+          onClick={attendanceStatus.checkedIn && !attendanceStatus.checkedOut ? handleCheckOut : handleCheckIn}
+          disabled={attendanceStatus.checkedIn && attendanceStatus.checkedOut}
+          className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all ${
+            attendanceStatus.checkedIn && !attendanceStatus.checkedOut
+              ? 'bg-green-500 hover:bg-green-600'
+              : attendanceStatus.checkedIn && attendanceStatus.checkedOut
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-red-500 hover:bg-red-600'
+          }`}
+          title={
+            attendanceStatus.checkedIn && !attendanceStatus.checkedOut
+              ? 'Click to Check Out'
+              : attendanceStatus.checkedIn && attendanceStatus.checkedOut
+              ? 'Already Checked Out'
+              : 'Click to Check In'
+          }
+        >
+          <span className="text-white text-xl font-bold">
+            {attendanceStatus.checkedIn && !attendanceStatus.checkedOut ? '✓' : attendanceStatus.checkedIn && attendanceStatus.checkedOut ? '✓' : '●'}
+          </span>
+        </button>
+      </div>
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -108,7 +171,7 @@ const EmployeeDashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-4">Attendance (Last 7 Days)</h3>
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={attendanceData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" />
@@ -134,12 +197,12 @@ const EmployeeDashboard = () => {
                       </p>
                       <p className="text-sm text-gray-500">Net Salary: ₹{payslip.net_salary}</p>
                     </div>
-                    <Link
-                      to={`/payroll/${payslip.id}`}
+                    <button
+                      onClick={() => navigate(`/payroll?payslip=${payslip.id}`)}
                       className="text-blue-600 hover:text-blue-800 text-sm"
                     >
                       View →
-                    </Link>
+                    </button>
                   </div>
                 </div>
               ))

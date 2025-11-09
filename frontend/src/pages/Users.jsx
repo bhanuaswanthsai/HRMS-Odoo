@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 
 const Users = () => {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
+  const [imageUrls, setImageUrls] = useState({}); // userId -> object URL
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -21,19 +24,57 @@ const Users = () => {
 
   useEffect(() => {
     fetchUsers();
-    fetchHROfficers();
-  }, []);
+    // Only fetch HR officers if user is admin (for dropdown)
+    if (currentUser?.role === 'admin') {
+      fetchHROfficers();
+    }
+  }, [currentUser]);
 
   const fetchUsers = async () => {
     try {
       const response = await api.get(`/users?search=${searchTerm}`);
-      setUsers(response.data.users);
+      const list = response.data.users || [];
+      setUsers(list);
+      // Load avatars for users with profile images
+      await loadAvatars(list);
     } catch (error) {
       toast.error('Failed to fetch users');
     } finally {
       setLoading(false);
     }
   };
+
+  // Load avatars into object URLs and cache per user ID
+  const loadAvatars = async (list) => {
+    const promises = list
+      .filter((u) => u.has_profile_image)
+      .map(async (u) => {
+        try {
+          const res = await api.get(`/users/profile/image/${u.id}`, { responseType: 'blob' });
+          const url = URL.createObjectURL(res.data);
+          setImageUrls((prev) => {
+            // Revoke previous URL for this user if exists
+            const existing = prev[u.id];
+            if (existing) {
+              try { URL.revokeObjectURL(existing); } catch (_) {}
+            }
+            return { ...prev, [u.id]: url };
+          });
+        } catch (_) {
+          // ignore failures; fallback to initials
+        }
+      });
+    await Promise.all(promises);
+  };
+
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(imageUrls).forEach((url) => {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+      });
+    };
+  }, []);
 
   const fetchHROfficers = async () => {
     try {
@@ -96,8 +137,12 @@ const Users = () => {
             : null,
           status: formData.status || 'active',
         };
-        await api.post('/users', submitData);
-        toast.success('User created successfully');
+        const response = await api.post('/users', submitData);
+        if (response.data.generatedPassword) {
+          toast.success(`User created successfully! Generated Password: ${response.data.generatedPassword}`, { duration: 10000 });
+        } else {
+          toast.success('User created successfully');
+        }
         // Refresh HR officers list after creating a user (in case an HR was created)
         await fetchHROfficers();
       }
@@ -163,22 +208,29 @@ const Users = () => {
     );
   }
 
+  const isEmployee = currentUser?.role === 'employee';
+  const isAdmin = currentUser?.role === 'admin';
+  const isHR = currentUser?.role === 'hr';
+  const canEdit = isAdmin || isHR;
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">User Management</h1>
-        <button
-          onClick={async () => {
-            setEditingUser(null);
-            resetForm();
-            // Refresh HR officers list before opening modal
-            await fetchHROfficers();
-            setShowModal(true);
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          Create New User
-        </button>
+        <h1 className="text-2xl font-bold">{isEmployee ? 'Employees' : 'User Management'}</h1>
+        {isAdmin && (
+          <button
+            onClick={async () => {
+              setEditingUser(null);
+              resetForm();
+              // Refresh HR officers list before opening modal
+              await fetchHROfficers();
+              setShowModal(true);
+            }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            Create New User
+          </button>
+        )}
       </div>
 
       <div className="mb-4">
@@ -191,57 +243,159 @@ const Users = () => {
         />
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Base Salary</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">HR Assigned</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {users.map((user) => (
-              <tr key={user.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.name}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.role}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.department || 'N/A'}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{user.base_salary || 0}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.hr_name || 'N/A'}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    user.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                  }`}>
-                    {user.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <button
-                    onClick={() => handleEdit(user)}
-                    className="text-blue-600 hover:text-blue-900 mr-4"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(user.id)}
-                    className="text-red-600 hover:text-red-900"
-                  >
-                    Delete
-                  </button>
-                </td>
+      {isEmployee ? (
+        // Card Grid View for Employees (Read-Only)
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {users.map((user) => (
+            <div
+              key={user.id}
+              className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow relative"
+            >
+              {/* Status Indicator Button */}
+              {user.today_status && (
+                <div className="absolute top-4 right-4">
+                  <div
+                    className={`w-4 h-4 rounded-full ${
+                      user.today_status === 'present'
+                        ? 'bg-green-500'
+                        : user.today_status === 'absent'
+                        ? 'bg-red-500'
+                        : 'bg-yellow-500'
+                    }`}
+                    title={`Today's Status: ${user.today_status}`}
+                  />
+                </div>
+              )}
+              <div className="flex items-center justify-center mb-4">
+                {imageUrls[user.id] ? (
+                  <img
+                    src={imageUrls[user.id]}
+                    alt={user.name}
+                    className="h-16 w-16 rounded-full object-cover border-2 border-blue-200"
+                  />
+                ) : (
+                  <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center">
+                    <span className="text-2xl font-bold text-blue-600">
+                      {user.name?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">{user.name}</h3>
+                <p className="text-sm text-gray-500 mb-2">{user.email}</p>
+                <p className="text-sm text-gray-600 mb-3">
+                  <span className="font-medium">Department:</span> {user.department || 'N/A'}
+                </p>
+                <span
+                  className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
+                    user.status === 'active'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-red-100 text-red-800'
+                  }`}
+                >
+                  {user.status}
+                </span>
+              </div>
+            </div>
+          ))}
+          {users.length === 0 && (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              No employees found
+            </div>
+          )}
+        </div>
+      ) : (
+        // Table View for Admin/HR (with Edit/Delete)
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Base Salary</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">HR Assigned</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                {canEdit && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                )}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      {imageUrls[user.id] ? (
+                        <img
+                          src={imageUrls[user.id]}
+                          alt={user.name}
+                          className="h-10 w-10 rounded-full object-cover mr-3"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                          <span className="text-sm font-bold text-blue-600">
+                            {user.name?.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center">
+                        <span className="text-sm font-medium text-gray-900">{user.name}</span>
+                        {user.today_status && user.role === 'employee' && (
+                          <div
+                            className={`ml-2 w-3 h-3 rounded-full ${
+                              user.today_status === 'present'
+                                ? 'bg-green-500'
+                                : user.today_status === 'absent'
+                                ? 'bg-red-500'
+                                : 'bg-yellow-500'
+                            }`}
+                            title={`Today's Status: ${user.today_status}`}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">{user.role}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.department || 'N/A'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{user.base_salary || 0}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.hr_name || 'N/A'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      user.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {user.status}
+                    </span>
+                  </td>
+                  {canEdit && (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <button
+                        onClick={() => handleEdit(user)}
+                        className="text-blue-600 hover:text-blue-900 mr-4"
+                      >
+                        Edit
+                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDelete(user.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {showModal && (
+      {showModal && !isEmployee && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <h3 className="text-lg font-bold mb-4">{editingUser ? 'Edit User' : 'Add New User'}</h3>
@@ -268,13 +422,15 @@ const Users = () => {
               </div>
               {!editingUser && (
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700">Password</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Password <span className="text-gray-500 text-xs">(Leave empty to auto-generate)</span>
+                  </label>
                   <input
                     type="password"
-                    required
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Auto-generated if left empty"
                   />
                 </div>
               )}

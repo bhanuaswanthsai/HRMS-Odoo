@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 
 const Payroll = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [payroll, setPayroll] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,6 +20,19 @@ const Payroll = () => {
   useEffect(() => {
     fetchPayroll();
   }, [user]);
+
+  // Check for payslip ID in URL and auto-open it
+  useEffect(() => {
+    const payslipId = searchParams.get('payslip');
+    if (payslipId && payroll.length > 0) {
+      const payslip = payroll.find(p => p.id === parseInt(payslipId));
+      if (payslip) {
+        setSelectedPayslip(payslip);
+        // Remove the query parameter from URL
+        setSearchParams({});
+      }
+    }
+  }, [payroll, searchParams, setSearchParams]);
 
   const fetchPayroll = async () => {
     try {
@@ -53,6 +68,27 @@ const Payroll = () => {
       fetchPayroll();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to generate payroll');
+    }
+  };
+
+  const handleDownloadPayslipPDF = async (payslip) => {
+    try {
+      const userId = user?.role === 'employee' ? user.id : payslip.user_id;
+      const response = await api.get(`/payroll/payslip/${payslip.id}/pdf`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const monthName = new Date(2000, payslip.month - 1).toLocaleString('default', { month: 'long' });
+      link.setAttribute('download', `payslip_${monthName}_${payslip.year}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('Payslip downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading payslip:', error);
+      toast.error('Failed to download payslip');
     }
   };
 
@@ -184,20 +220,57 @@ const Payroll = () => {
 
       {selectedPayslip && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white max-h-96 overflow-y-auto">
-            <h3 className="text-lg font-bold mb-4">Payslip View</h3>
-            <div className="space-y-2">
-              <p><strong>Employee:</strong> {selectedPayslip.employee_name || 'N/A'}</p>
-              <p><strong>Month:</strong> {selectedPayslip.month}</p>
-              <p><strong>Year:</strong> {selectedPayslip.year}</p>
-              <p><strong>Basic Salary:</strong> ₹{selectedPayslip.basic_salary}</p>
-              <p><strong>Paid Leaves:</strong> {selectedPayslip.paid_leaves}</p>
-              <p><strong>Unpaid Leaves:</strong> {selectedPayslip.unpaid_leaves}</p>
-              <p><strong>PF Deduction:</strong> ₹{selectedPayslip.pf_deduction}</p>
-              <p><strong>Professional Tax:</strong> ₹{selectedPayslip.professional_tax}</p>
-              <p><strong>Net Salary:</strong> ₹{selectedPayslip.net_salary}</p>
+          <div className="relative top-20 mx-auto p-6 border w-full max-w-2xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Payslip View</h3>
+              <button
+                onClick={() => handleDownloadPayslipPDF(selectedPayslip)}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm"
+              >
+                Download PDF
+              </button>
             </div>
-            <div className="mt-4 flex justify-end">
+            <div className="bg-gray-50 p-6 rounded-lg mb-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Employee Name</p>
+                  <p className="font-semibold text-gray-900">{selectedPayslip.employee_name || user?.name || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Period</p>
+                  <p className="font-semibold text-gray-900">
+                    {new Date(2000, selectedPayslip.month - 1).toLocaleString('default', { month: 'long' })} {selectedPayslip.year}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-gray-600">Basic Salary</span>
+                <span className="font-semibold">₹{selectedPayslip.basic_salary}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-gray-600">Paid Leaves</span>
+                <span className="font-semibold text-green-600">{selectedPayslip.paid_leaves} days</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-gray-600">Unpaid Leaves</span>
+                <span className="font-semibold text-red-600">{selectedPayslip.unpaid_leaves} days</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-gray-600">PF Deduction (12%)</span>
+                <span className="font-semibold text-red-600">-₹{selectedPayslip.pf_deduction}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-gray-600">Professional Tax</span>
+                <span className="font-semibold text-red-600">-₹{selectedPayslip.professional_tax}</span>
+              </div>
+              <div className="flex justify-between py-3 border-t-2 border-gray-300 mt-4">
+                <span className="text-lg font-bold text-gray-900">Net Salary</span>
+                <span className="text-lg font-bold text-green-600">₹{selectedPayslip.net_salary}</span>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-2">
               <button
                 onClick={() => setSelectedPayslip(null)}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
