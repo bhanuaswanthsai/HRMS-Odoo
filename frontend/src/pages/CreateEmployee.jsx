@@ -26,9 +26,9 @@ const CreateEmployee = () => {
   const [logoPreview, setLogoPreview] = useState(null);
 
   useEffect(() => {
-    // Check if user is HR or Admin
-    if (!user || (user.role !== 'hr' && user.role !== 'admin')) {
-      toast.error('Access denied. Only HR and Admin can create employees.');
+    // Check if user is Admin
+    if (!user || user.role !== 'admin') {
+      toast.error('Access denied. Only Admin can create employees.');
       navigate('/dashboard');
       return;
     }
@@ -125,6 +125,7 @@ const CreateEmployee = () => {
 
       if (response.data.success) {
         setCreatedUser({
+          company_name: response.data.company_name,
           loginId: response.data.loginId,
           password: response.data.systemPassword,
           email: response.data.user.email,
@@ -167,7 +168,7 @@ const CreateEmployee = () => {
               </div>
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Employee Created Successfully!</h2>
-            <p className="text-gray-600 mb-6">Please save the following credentials:</p>
+            <p className="text-gray-600 mb-6">Tell your employee to check their email for login details</p>
           </div>
 
           <div className="bg-gray-50 p-4 rounded-lg space-y-3">
@@ -249,11 +250,11 @@ const CreateEmployee = () => {
                     id="company_name"
                     name="company_name"
                     value={formData.company_name}
-                    readOnly
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-700 cursor-not-allowed"
-                    placeholder="Company name"
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter company name"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Company name is automatically set from your account</p>
+                  <p className="mt-1 text-xs text-gray-500">Company name is pre-filled from your account, but you can modify it</p>
                 </div>
 
                 <div>

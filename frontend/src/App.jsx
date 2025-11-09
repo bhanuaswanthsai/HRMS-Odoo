@@ -26,7 +26,7 @@ const AppRoutes = () => {
         <Route
           path="/create-employee"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'hr']}>
+            <ProtectedRoute allowedRoles={['admin']}>
               <Navbar />
               <CreateEmployee />
             </ProtectedRoute>

@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../config/database');
 const { verifyToken, authorizeRoles } = require('../middleware/auth');
+const { sendWelcomeEmail } = require('../utils/emailService');
 
 const router = express.Router();
 
@@ -178,77 +179,142 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
       certsArray = Array.isArray(certifications) ? certifications : (typeof certifications === 'string' && certifications ? JSON.parse(certifications) : []);
     }
 
-    if (name !== undefined) {
+    if (name !== undefined && name !== null && name !== '') {
       updateFields.push(`name = $${paramCount++}`);
       params.push(name);
     }
-    if (first_name !== undefined) {
+    if (first_name !== undefined && first_name !== null && first_name !== '') {
       updateFields.push(`first_name = $${paramCount++}`);
       params.push(first_name);
     }
-    if (last_name !== undefined) {
+    if (last_name !== undefined && last_name !== null && last_name !== '') {
       updateFields.push(`last_name = $${paramCount++}`);
       params.push(last_name);
     }
-    if (email !== undefined) {
+    if (email !== undefined && email !== null && email !== '') {
       updateFields.push(`email = $${paramCount++}`);
       params.push(email);
     }
-    if (phone_number !== undefined) {
-      updateFields.push(`phone_number = $${paramCount++}`);
-      params.push(phone_number);
+    if (phone_number !== undefined && phone_number !== null) {
+      if (phone_number === '') {
+        updateFields.push(`phone_number = NULL`);
+      } else {
+        updateFields.push(`phone_number = $${paramCount++}`);
+        params.push(phone_number);
+      }
     }
-    if (department !== undefined) {
-      updateFields.push(`department = $${paramCount++}`);
-      params.push(department);
+    if (department !== undefined && department !== null) {
+      if (department === '') {
+        updateFields.push(`department = NULL`);
+      } else {
+        updateFields.push(`department = $${paramCount++}`);
+        params.push(department);
+      }
     }
-    if (location !== undefined) {
-      updateFields.push(`location = $${paramCount++}`);
-      params.push(location);
+    if (location !== undefined && location !== null) {
+      if (location === '') {
+        updateFields.push(`location = NULL`);
+      } else {
+        updateFields.push(`location = $${paramCount++}`);
+        params.push(location);
+      }
     }
-    if (job_position !== undefined) {
-      updateFields.push(`job_position = $${paramCount++}`);
-      params.push(job_position);
+    if (job_position !== undefined && job_position !== null) {
+      if (job_position === '') {
+        updateFields.push(`job_position = NULL`);
+      } else {
+        updateFields.push(`job_position = $${paramCount++}`);
+        params.push(job_position);
+      }
     }
     if (date_of_birth !== undefined) {
-      updateFields.push(`date_of_birth = $${paramCount++}`);
-      params.push(date_of_birth);
+      if (date_of_birth === null || date_of_birth === '') {
+        // Allow clearing date_of_birth by sending empty string or null
+        updateFields.push(`date_of_birth = NULL`);
+      } else {
+        // Validate date format before inserting
+        const dateValue = new Date(date_of_birth);
+        if (isNaN(dateValue.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid date format for date of birth'
+          });
+        }
+        updateFields.push(`date_of_birth = $${paramCount++}`);
+        params.push(date_of_birth);
+      }
     }
-    if (residing_address !== undefined) {
-      updateFields.push(`residing_address = $${paramCount++}`);
-      params.push(residing_address);
+    if (residing_address !== undefined && residing_address !== null) {
+      if (residing_address === '') {
+        updateFields.push(`residing_address = NULL`);
+      } else {
+        updateFields.push(`residing_address = $${paramCount++}`);
+        params.push(residing_address);
+      }
     }
-    if (nationality !== undefined) {
-      updateFields.push(`nationality = $${paramCount++}`);
-      params.push(nationality);
+    if (nationality !== undefined && nationality !== null) {
+      if (nationality === '') {
+        updateFields.push(`nationality = NULL`);
+      } else {
+        updateFields.push(`nationality = $${paramCount++}`);
+        params.push(nationality);
+      }
     }
-    if (personal_email !== undefined) {
-      updateFields.push(`personal_email = $${paramCount++}`);
-      params.push(personal_email);
+    if (personal_email !== undefined && personal_email !== null) {
+      if (personal_email === '') {
+        updateFields.push(`personal_email = NULL`);
+      } else {
+        updateFields.push(`personal_email = $${paramCount++}`);
+        params.push(personal_email);
+      }
     }
-    if (gender !== undefined) {
-      updateFields.push(`gender = $${paramCount++}`);
-      params.push(gender);
+    if (gender !== undefined && gender !== null) {
+      if (gender === '') {
+        updateFields.push(`gender = NULL`);
+      } else {
+        updateFields.push(`gender = $${paramCount++}`);
+        params.push(gender);
+      }
     }
-    if (marital_status !== undefined) {
-      updateFields.push(`marital_status = $${paramCount++}`);
-      params.push(marital_status);
+    if (marital_status !== undefined && marital_status !== null) {
+      if (marital_status === '') {
+        updateFields.push(`marital_status = NULL`);
+      } else {
+        updateFields.push(`marital_status = $${paramCount++}`);
+        params.push(marital_status);
+      }
     }
-    if (about !== undefined) {
-      updateFields.push(`about = $${paramCount++}`);
-      params.push(about);
+    if (about !== undefined && about !== null) {
+      if (about === '') {
+        updateFields.push(`about = NULL`);
+      } else {
+        updateFields.push(`about = $${paramCount++}`);
+        params.push(about);
+      }
     }
-    if (job_likes !== undefined) {
-      updateFields.push(`job_likes = $${paramCount++}`);
-      params.push(job_likes);
+    if (job_likes !== undefined && job_likes !== null) {
+      if (job_likes === '') {
+        updateFields.push(`job_likes = NULL`);
+      } else {
+        updateFields.push(`job_likes = $${paramCount++}`);
+        params.push(job_likes);
+      }
     }
-    if (interests_hobbies !== undefined) {
-      updateFields.push(`interests_hobbies = $${paramCount++}`);
-      params.push(interests_hobbies);
+    if (interests_hobbies !== undefined && interests_hobbies !== null) {
+      if (interests_hobbies === '') {
+        updateFields.push(`interests_hobbies = NULL`);
+      } else {
+        updateFields.push(`interests_hobbies = $${paramCount++}`);
+        params.push(interests_hobbies);
+      }
     }
-    if (resume !== undefined) {
-      updateFields.push(`resume = $${paramCount++}`);
-      params.push(resume);
+    if (resume !== undefined && resume !== null) {
+      if (resume === '') {
+        updateFields.push(`resume = NULL`);
+      } else {
+        updateFields.push(`resume = $${paramCount++}`);
+        params.push(resume);
+      }
     }
     if (skillsArray !== null && skillsArray !== undefined) {
       updateFields.push(`skills = $${paramCount++}`);
@@ -278,24 +344,22 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
       updateFields.push(`uan_number = $${paramCount++}`);
       params.push(uan_number);
     }
-    // Only admin/payroll can update salary info
-    if ((req.user.role === 'admin' || req.user.role === 'payroll')) {
-      if (month_wage !== undefined) {
-        updateFields.push(`month_wage = $${paramCount++}`);
-        params.push(month_wage);
-      }
-      if (yearly_wage !== undefined) {
-        updateFields.push(`yearly_wage = $${paramCount++}`);
-        params.push(yearly_wage);
-      }
-      if (working_days_per_week !== undefined) {
-        updateFields.push(`working_days_per_week = $${paramCount++}`);
-        params.push(working_days_per_week);
-      }
-      if (break_time_hours !== undefined) {
-        updateFields.push(`break_time_hours = $${paramCount++}`);
-        params.push(break_time_hours);
-      }
+    // All users can update their own salary info
+    if (month_wage !== undefined) {
+      updateFields.push(`month_wage = $${paramCount++}`);
+      params.push(month_wage);
+    }
+    if (yearly_wage !== undefined) {
+      updateFields.push(`yearly_wage = $${paramCount++}`);
+      params.push(yearly_wage);
+    }
+    if (working_days_per_week !== undefined) {
+      updateFields.push(`working_days_per_week = $${paramCount++}`);
+      params.push(working_days_per_week);
+    }
+    if (break_time_hours !== undefined) {
+      updateFields.push(`break_time_hours = $${paramCount++}`);
+      params.push(break_time_hours);
     }
 
     if (updateFields.length === 0) {
@@ -307,6 +371,10 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
 
     params.push(userId);
     const query = `UPDATE users SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramCount} RETURNING *`;
+    
+    console.log('Profile update query:', query);
+    console.log('Profile update params:', params);
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
     
     const result = await pool.query(query, params);
     
@@ -334,10 +402,15 @@ router.put('/:id/profile', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Update profile error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', error.detail);
+    console.error('Error code:', error.code);
     res.status(500).json({
       success: false,
       message: 'Error updating profile',
-      error: error.message
+      error: error.message,
+      detail: error.detail,
+      code: error.code
     });
   }
 });
@@ -436,12 +509,13 @@ router.get('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) 
 });
 
 // Helper function to generate login ID
-function generateLoginId(firstName, lastName, year, employeeNumber) {
-  const firstTwo = (firstName || '').substring(0, 2).toLowerCase().padEnd(2, 'x');
-  const lastTwo = (lastName || '').substring(0, 2).toLowerCase().padEnd(2, 'x');
+function generateLoginId(company_name,firstName, lastName, year, employeeNumber) {
+  const firstTwo=(company_name || '').substring(0,2).toUpperCase().padEnd(2,'x');
+  const midTwo = (firstName || '').substring(0, 2).toUpperCase().padEnd(2, 'x');
+  const lastTwo = (lastName || '').substring(0, 2).toUpperCase().padEnd(2, 'x');
   const yearStr = year.toString();
   const empNum = employeeNumber.toString().padStart(3, '0');
-  return `${firstTwo}${lastTwo}${yearStr}${empNum}`;
+  return `${firstTwo}${midTwo}${lastTwo}${yearStr}${empNum}`;
 }
 
 // Create user (Admin/HR only)
@@ -500,7 +574,7 @@ router.post('/', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) =>
     const employeeNumber = empNumResult.rows[0].next_number;
 
     // Generate login ID
-    const loginId = generateLoginId(first_name, last_name, joiningYear, employeeNumber);
+    const loginId = generateLoginId(company_name,first_name, last_name, joiningYear, employeeNumber);
 
     // Check if login_id already exists (unlikely but possible)
     let finalLoginId = loginId;
@@ -544,12 +618,91 @@ router.post('/', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) =>
       ]
     );
 
+    // Get company logo - use provided logo, or get from admin user, or get from company name match
+    let companyLogoToUse = company_logo;
+    if (!companyLogoToUse) {
+      // First, try to get from the admin user who is creating the employee
+      if (req.user) {
+        const adminUser = await pool.query(
+          'SELECT company_logo, company_name FROM users WHERE id = $1',
+          [req.user.id]
+        );
+        if (adminUser.rows.length > 0 && adminUser.rows[0].company_logo) {
+          companyLogoToUse = adminUser.rows[0].company_logo;
+        }
+      }
+      
+      // If still no logo, try to get from any user with the same company name
+      if (!companyLogoToUse && company_name) {
+        const companyUser = await pool.query(
+          'SELECT company_logo FROM users WHERE company_name = $1 AND company_logo IS NOT NULL LIMIT 1',
+          [company_name]
+        );
+        if (companyUser.rows.length > 0 && companyUser.rows[0].company_logo) {
+          companyLogoToUse = companyUser.rows[0].company_logo;
+        }
+      }
+    }
+
+    // Send welcome email to the employee (non-blocking)
+    console.log('');
+    console.log('📧 ========================================');
+    console.log('📧 SENDING WELCOME EMAIL TO EMPLOYEE');
+    console.log('📧 ========================================');
+    console.log(`📧 Employee Name: ${fullName}`);
+    console.log(`📧 Employee Email: ${email}`);
+    console.log(`📧 Login ID: ${finalLoginId}`);
+    console.log(`📧 Company: ${company_name || 'HRMS'}`);
+    console.log(`📧 Company Logo: ${companyLogoToUse ? 'Yes' : 'No'}`);
+    console.log('📧 ========================================');
+    console.log('');
+    
+    sendWelcomeEmail({
+      email: email,
+      firstName: first_name,
+      lastName: last_name,
+      loginId: finalLoginId,
+      password: systemPasswordFinal,
+      companyName: company_name || 'HRMS',
+      companyLogo: companyLogoToUse || null,
+      portalUrl: process.env.FRONTEND_URL || 'http://localhost:5173'
+    }).then(result => {
+      console.log('');
+      console.log('📧 ========================================');
+      if (result.success) {
+        console.log(`✅ Welcome email sent successfully to: ${email}`);
+        console.log(`   Message ID: ${result.messageId}`);
+        console.log(`   ⚠️  IMPORTANT: Check the employee's email inbox AND spam folder!`);
+        console.log(`   ⚠️  Email delivery can take 5-15 minutes.`);
+      } else {
+        console.error(`❌ FAILED to send email to: ${email}`);
+        console.error(`   Error: ${result.error}`);
+        if (result.errorCode === 'EAUTH') {
+          console.error('   ⚠️  Email authentication failed. Check your SMTP credentials in .env file.');
+        } else if (result.errorCode === 'EENVELOPE') {
+          console.error('   ⚠️  Invalid email address. Please check the employee email address.');
+        }
+      }
+      console.log('📧 ========================================');
+      console.log('');
+    }).catch(error => {
+      // Log error but don't fail the user creation
+      console.error('');
+      console.error('📧 ========================================');
+      console.error('❌ CRITICAL ERROR sending welcome email:');
+      console.error(`   To: ${email}`);
+      console.error(`   Error: ${error.message || error}`);
+      console.error('📧 ========================================');
+      console.error('');
+    });
+
     res.status(201).json({
       success: true,
       message: 'User created successfully',
       user: result.rows[0],
       systemPassword: systemPasswordFinal, // Return system-generated password
-      loginId: finalLoginId
+      loginId: finalLoginId,
+      emailSent: true // Indicate that email was sent (or attempted)
     });
   } catch (error) {
     console.error('Create user error:', error);
