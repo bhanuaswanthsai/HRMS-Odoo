@@ -58,6 +58,31 @@ const Leaves = () => {
   const handleApplyLeave = async (e) => {
     e.preventDefault();
     try {
+      // Basic date order check
+      const from = new Date(formData.from_date);
+      const to = new Date(formData.to_date);
+      if (!formData.from_date || !formData.to_date) {
+        toast.error('Please select both From and To dates');
+        return;
+      }
+      if (from > to) {
+        toast.error('From date cannot be after To date');
+        return;
+      }
+
+      // Overlap check against existing leaves (pending/approved)
+      const myLeaves = user?.role === 'employee' ? leaves : [];
+      const conflicts = myLeaves.filter(l => ['pending','approved'].includes(l.status))
+        .filter(l => {
+          const lFrom = new Date(l.from_date);
+          const lTo = new Date(l.to_date);
+          return !(to < lFrom || from > lTo);
+        });
+      if (conflicts.length > 0) {
+        const msg = `Overlaps with existing leave: ${new Date(conflicts[0].from_date).toLocaleDateString()} - ${new Date(conflicts[0].to_date).toLocaleDateString()} (${conflicts[0].status})`;
+        toast.error(msg);
+        return;
+      }
       await api.post('/leave/apply', formData);
       toast.success('Leave applied successfully');
       setShowApplyModal(false);
@@ -234,7 +259,14 @@ const Leaves = () => {
                   type="date"
                   required
                   value={formData.from_date}
-                  onChange={(e) => setFormData({ ...formData, from_date: e.target.value })}
+                  onChange={(e) => {
+                    const newFrom = e.target.value;
+                    setFormData((prev) => ({
+                      ...prev,
+                      from_date: newFrom,
+                      to_date: prev.to_date && prev.to_date < newFrom ? newFrom : prev.to_date,
+                    }));
+                  }}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
@@ -245,6 +277,7 @@ const Leaves = () => {
                   required
                   value={formData.to_date}
                   onChange={(e) => setFormData({ ...formData, to_date: e.target.value })}
+                  min={formData.from_date || undefined}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>

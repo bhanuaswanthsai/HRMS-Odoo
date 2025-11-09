@@ -28,6 +28,25 @@ router.post('/apply', verifyToken, authorizeRoles('employee'), async (req, res) 
       });
     }
 
+    // Prevent overlapping leaves (check against pending or approved)
+    const overlapCheck = await pool.query(
+      `SELECT id, from_date, to_date, status
+       FROM leaves
+       WHERE user_id = $1
+         AND status IN ('pending','approved')
+         AND NOT ($3 < from_date OR $2 > to_date)`,
+      [userId, from_date, to_date]
+    );
+
+    if (overlapCheck.rows.length > 0) {
+      const conflicts = overlapCheck.rows.map(r => ({ id: r.id, from_date: r.from_date, to_date: r.to_date, status: r.status }));
+      return res.status(400).json({
+        success: false,
+        message: 'Requested leave dates overlap with an existing leave application',
+        conflicts
+      });
+    }
+
     // Insert leave application
     const result = await pool.query(
       `INSERT INTO leaves (user_id, applied_date, from_date, to_date, leave_type, reason, status)
