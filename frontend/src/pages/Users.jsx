@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 const Users = () => {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
+  const [imageUrls, setImageUrls] = useState({}); // userId -> object URL
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -32,13 +33,48 @@ const Users = () => {
   const fetchUsers = async () => {
     try {
       const response = await api.get(`/users?search=${searchTerm}`);
-      setUsers(response.data.users);
+      const list = response.data.users || [];
+      setUsers(list);
+      // Load avatars for users with profile images
+      await loadAvatars(list);
     } catch (error) {
       toast.error('Failed to fetch users');
     } finally {
       setLoading(false);
     }
   };
+
+  // Load avatars into object URLs and cache per user ID
+  const loadAvatars = async (list) => {
+    const promises = list
+      .filter((u) => u.has_profile_image)
+      .map(async (u) => {
+        try {
+          const res = await api.get(`/users/profile/image/${u.id}`, { responseType: 'blob' });
+          const url = URL.createObjectURL(res.data);
+          setImageUrls((prev) => {
+            // Revoke previous URL for this user if exists
+            const existing = prev[u.id];
+            if (existing) {
+              try { URL.revokeObjectURL(existing); } catch (_) {}
+            }
+            return { ...prev, [u.id]: url };
+          });
+        } catch (_) {
+          // ignore failures; fallback to initials
+        }
+      });
+    await Promise.all(promises);
+  };
+
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(imageUrls).forEach((url) => {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+      });
+    };
+  }, []);
 
   const fetchHROfficers = async () => {
     try {
@@ -231,24 +267,19 @@ const Users = () => {
                 </div>
               )}
               <div className="flex items-center justify-center mb-4">
-                {user.has_profile_image ? (
+                {imageUrls[user.id] ? (
                   <img
-                    src={`http://localhost:5003/api/users/profile/image/${user.id}`}
+                    src={imageUrls[user.id]}
                     alt={user.name}
                     className="h-16 w-16 rounded-full object-cover border-2 border-blue-200"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                      e.target.nextSibling.style.display = 'flex';
-                    }}
                   />
-                ) : null}
-                <div
-                  className={`h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center ${user.has_profile_image ? 'hidden' : ''}`}
-                >
-                  <span className="text-2xl font-bold text-blue-600">
-                    {user.name?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
+                ) : (
+                  <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center">
+                    <span className="text-2xl font-bold text-blue-600">
+                      {user.name?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="text-center mb-4">
                 <h3 className="text-lg font-semibold text-gray-900 mb-1">{user.name}</h3>
@@ -297,24 +328,20 @@ const Users = () => {
                 <tr key={user.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      {user.has_profile_image ? (
+                      {imageUrls[user.id] ? (
                         <img
-                          src={`http://localhost:5003/api/users/profile/image/${user.id}`}
+                          src={imageUrls[user.id]}
                           alt={user.name}
                           className="h-10 w-10 rounded-full object-cover mr-3"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                          }}
                         />
-                      ) : null}
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                          <span className="text-sm font-bold text-blue-600">
+                            {user.name?.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex items-center">
-                        {!user.has_profile_image && (
-                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
-                            <span className="text-sm font-bold text-blue-600">
-                              {user.name?.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                        )}
                         <span className="text-sm font-medium text-gray-900">{user.name}</span>
                         {user.today_status && user.role === 'employee' && (
                           <div

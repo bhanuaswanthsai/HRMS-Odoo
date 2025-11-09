@@ -16,6 +16,7 @@ const Profile = () => {
     department: '',
     base_salary: '',
   });
+  const [imageSrc, setImageSrc] = useState(null);
   const [passwordData, setPasswordData] = useState({
     old_password: '',
     new_password: '',
@@ -32,6 +33,36 @@ const Profile = () => {
       });
     }
   }, [user]);
+
+  // Load profile image via authorized request
+  useEffect(() => {
+    let revokedUrl = null;
+    async function loadProfileImage() {
+      try {
+        if (!user?.id || !user?.has_profile_image) {
+          if (imageSrc) {
+            URL.revokeObjectURL(imageSrc);
+          }
+          setImageSrc(null);
+          return;
+        }
+        const res = await api.get(`/users/profile/image/${user.id}`, { responseType: 'blob' });
+        const url = URL.createObjectURL(res.data);
+        revokedUrl = url;
+        setImageSrc(url);
+      } catch (err) {
+        if (imageSrc) {
+          URL.revokeObjectURL(imageSrc);
+        }
+        setImageSrc(null);
+      }
+    }
+    loadProfileImage();
+    return () => {
+      if (revokedUrl) URL.revokeObjectURL(revokedUrl);
+      if (imageSrc) URL.revokeObjectURL(imageSrc);
+    };
+  }, [user?.id, user?.has_profile_image]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -60,17 +91,25 @@ const Profile = () => {
       const formData = new FormData();
       formData.append('image', profileImage);
 
-      await api.post('/users/profile/image', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      await api.post('/users/profile/image', formData);
 
       toast.success('Profile image updated successfully');
       setShowImageModal(false);
       setProfileImage(null);
       setImagePreview(null);
-      fetchProfile();
+      // Refresh profile and image
+      await fetchProfile();
+      // Immediately reload the image blob so UI updates without full refresh
+      try {
+        if (imageSrc) {
+          URL.revokeObjectURL(imageSrc);
+        }
+        const res = await api.get(`/users/profile/image/${user.id}`, { responseType: 'blob' });
+        const url = URL.createObjectURL(res.data);
+        setImageSrc(url);
+      } catch (_) {
+        // ignore; image will load on next profile fetch
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to upload image');
     }
@@ -144,24 +183,19 @@ const Profile = () => {
         </div>
 
         <div className="flex items-center mb-6">
-          {user.has_profile_image ? (
+          {imageSrc ? (
             <img
-              src={`http://localhost:5003/api/users/profile/image/${user.id}`}
+              src={imageSrc}
               alt={user.name}
               className="h-24 w-24 rounded-full object-cover border-4 border-blue-200"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
             />
-          ) : null}
-          <div
-            className={`h-24 w-24 rounded-full bg-blue-100 flex items-center justify-center ${user.has_profile_image ? 'hidden' : ''}`}
-          >
-            <span className="text-3xl font-bold text-blue-600">
-              {user.name?.charAt(0).toUpperCase()}
-            </span>
-          </div>
+          ) : (
+            <div className="h-24 w-24 rounded-full bg-blue-100 flex items-center justify-center">
+              <span className="text-3xl font-bold text-blue-600">
+                {user.name?.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
