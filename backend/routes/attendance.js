@@ -4,6 +4,14 @@ const { verifyToken, authorizeRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Helpers for time validation (expects 'HH:MM')
+function toMinutes(t) {
+  if (!t || typeof t !== 'string') return null;
+  const [hh, mm] = t.split(':').map((x) => parseInt(x, 10));
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  return hh * 60 + mm;
+}
+
 // Check-in (Employee) - Quick check-in button
 router.post('/checkin', verifyToken, authorizeRoles('employee'), async (req, res) => {
   try {
@@ -179,6 +187,22 @@ router.post('/mark', verifyToken, authorizeRoles('employee'), async (req, res) =
       });
     }
 
+    // Validate time order if provided
+    const inMin = toMinutes(check_in_time);
+    const outMin = toMinutes(check_out_time);
+    if (outMin !== null && inMin === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Check-out time cannot be set without a valid check-in time'
+      });
+    }
+    if (inMin !== null && outMin !== null && outMin <= inMin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Check-out time must be after check-in time'
+      });
+    }
+
     // Insert attendance
     const result = await pool.query(
       `INSERT INTO attendance (user_id, date, status, check_in_time, check_out_time)
@@ -346,7 +370,7 @@ router.put('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) 
 
     // Get attendance record
     const attendanceResult = await pool.query(
-      'SELECT user_id FROM attendance WHERE id = $1',
+      'SELECT user_id, check_in_time, check_out_time FROM attendance WHERE id = $1',
       [id]
     );
 
@@ -381,6 +405,24 @@ router.put('/:id', verifyToken, authorizeRoles('admin', 'hr'), async (req, res) 
       updateFields.push(`status = $${paramCount++}`);
       params.push(status);
     }
+    // Determine effective times for validation
+    const newIn = check_in_time !== undefined ? check_in_time : attendanceResult.rows[0].check_in_time;
+    const newOut = check_out_time !== undefined ? check_out_time : attendanceResult.rows[0].check_out_time;
+    const newInMin = toMinutes(newIn);
+    const newOutMin = toMinutes(newOut);
+    if (newOutMin !== null && newInMin === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Check-out time cannot be set without a valid check-in time'
+      });
+    }
+    if (newInMin !== null && newOutMin !== null && newOutMin <= newInMin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Check-out time must be after check-in time'
+      });
+    }
+
     if (check_in_time !== undefined) {
       updateFields.push(`check_in_time = $${paramCount++}`);
       params.push(check_in_time);

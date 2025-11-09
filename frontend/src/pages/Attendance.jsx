@@ -27,6 +27,26 @@ const Attendance = () => {
     fetchAttendance();
   }, [user]);
 
+  const toMinutes = (t) => {
+    if (!t) return null;
+    const [h, m] = t.split(':').map((x) => parseInt(x, 10));
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  const formatTime = (t) => {
+    if (!t) return 'N/A';
+    const [hStr, mStr] = t.split(':');
+    let h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    if (Number.isNaN(h) || Number.isNaN(m)) return t;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (h === 0) h = 12;
+    const mm = m.toString().padStart(2, '0');
+    return `${h}:${mm} ${ampm}`;
+  };
+
   const fetchAttendance = async () => {
     try {
       if (user?.role === 'employee') {
@@ -82,6 +102,16 @@ const Attendance = () => {
   const handleMarkAttendance = async (e) => {
     e.preventDefault();
     try {
+      const inMin = toMinutes(markFormData.check_in_time);
+      const outMin = toMinutes(markFormData.check_out_time);
+      if (outMin !== null && inMin === null) {
+        toast.error('Provide a valid check-in time before setting check-out time');
+        return;
+      }
+      if (inMin !== null && outMin !== null && outMin <= inMin) {
+        toast.error('Check-out time must be after check-in time');
+        return;
+      }
       await api.post('/attendance/mark', markFormData);
       toast.success('Attendance marked successfully');
       setShowMarkModal(false);
@@ -110,6 +140,16 @@ const Attendance = () => {
   const handleEditAttendance = async (e) => {
     e.preventDefault();
     try {
+      const inMin = toMinutes(editFormData.check_in_time);
+      const outMin = toMinutes(editFormData.check_out_time);
+      if (outMin !== null && inMin === null) {
+        toast.error('Provide a valid check-in time before setting check-out time');
+        return;
+      }
+      if (inMin !== null && outMin !== null && outMin <= inMin) {
+        toast.error('Check-out time must be after check-in time');
+        return;
+      }
       await api.put(`/attendance/${editingAttendance.id}`, editFormData);
       toast.success('Attendance updated successfully');
       setEditingAttendance(null);
@@ -194,10 +234,10 @@ const Attendance = () => {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {record.check_in_time || 'N/A'}
+                  {formatTime(record.check_in_time)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {record.check_out_time || 'N/A'}
+                  {formatTime(record.check_out_time)}
                 </td>
                 {(user?.role === 'admin' || user?.role === 'hr') && (
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
